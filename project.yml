@@ -1,0 +1,52 @@
+name: FireballWebKit
+options:
+  minimumXcodeGenVersion: 2.46.0
+  deploymentTarget:
+    iOS: "18.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: targeted
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGNING_ALLOWED: NO
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  FireballWebKit:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - Sources
+    resources:
+      - Resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.fireball.webkit
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Fireball
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_NSFaceIDUsageDescription: Authenticate access to protected Fireball profiles.
+        SUPPORTS_MACCATALYST: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+  FireballWebKitTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests
+    dependencies:
+      - target: FireballWebKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.fireball.webkit.tests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  FireballWebKit:
+    build:
+      targets:
+        FireballWebKit: all
+        FireballWebKitTests: [test]
+    test:
+      targets:
+        - FireballWebKitTests

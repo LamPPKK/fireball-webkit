@@ -1,0 +1,10 @@
+[
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?doubleclick\\.net/"
+    },
+    "action": {
+      "type": "block"
+    }
+  }
+]

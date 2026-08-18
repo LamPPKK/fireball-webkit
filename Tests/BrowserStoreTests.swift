@@ -101,6 +101,30 @@ final class BrowserStoreTests: XCTestCase {
         XCTAssertFalse(originalSession.profile.blockerEnabled)
     }
 
+    func testContentProcessTerminationUsesTheCorrectActiveAndBackgroundSessions() async throws {
+        let store = makeStore(repository: InMemoryBrowserRepository(snapshot: .initial()))
+        await store.bootstrap()
+        let backgroundTab = try XCTUnwrap(store.createTab(url: URL(string: "https://background.example")))
+        let backgroundSession = try XCTUnwrap(store.activeSession)
+        let activeTab = try XCTUnwrap(store.createTab(url: URL(string: "https://active.example")))
+        let activeSession = try XCTUnwrap(store.activeSession)
+
+        XCTAssertFalse(backgroundSession === activeSession)
+        XCTAssertNotNil(backgroundSession.webView.navigationDelegate)
+        XCTAssertNotNil(activeSession.webView.navigationDelegate)
+
+        backgroundSession.webContentProcessDidTerminate()
+        XCTAssertFalse(store.isSessionLoaded(for: backgroundTab.id))
+        XCTAssertTrue(store.isSessionLoaded(for: activeTab.id))
+
+        activeSession.webContentProcessDidTerminate()
+        XCTAssertTrue(store.isSessionLoaded(for: activeTab.id))
+        XCTAssertNil(store.errorMessage)
+
+        activeSession.webContentProcessDidTerminate()
+        XCTAssertEqual(store.errorMessage, "The page stopped unexpectedly. Reload it when you are ready.")
+    }
+
     func testPrivateSpaceLocksAcrossBackgroundTransition() async {
         let store = makeStore(repository: InMemoryBrowserRepository(snapshot: .initial()))
         await store.bootstrap()

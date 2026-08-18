@@ -95,6 +95,11 @@
             isEnabled = "YES">
          </EnvironmentVariable>
          <EnvironmentVariable
+            key = "FIREBALL_CAPTURE_MEDIA"
+            value = "$(FIREBALL_CAPTURE_MEDIA)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
             key = "FIREBALL_RULE_ARTIFACT_DIRECTORY"
             value = "$(FIREBALL_RULE_ARTIFACT_DIRECTORY)"
             isEnabled = "YES">

@@ -552,11 +552,26 @@ final class BrowserStore {
         session.onExternalURL = { [weak self] url in
             self?.pendingExternalURL = url
         }
+        session.onWebContentProcessTerminated = { [weak self] session in
+            self?.handleWebContentProcessTermination(for: session)
+        }
         sessions[tab.id] = session
         if let url = tab.url {
             session.load(url)
         }
         return session
+    }
+
+    private func handleWebContentProcessTermination(for session: BrowserSession) {
+        let isActive = session.tabID == selectedTabID
+        switch session.recoverFromWebContentProcessTermination(isActive: isActive) {
+        case .reload:
+            break
+        case .discard:
+            sessions.removeValue(forKey: session.tabID)
+        case .reportFailure:
+            errorMessage = "The page stopped unexpectedly. Reload it when you are ready."
+        }
     }
 
     private func syncTabState(from session: BrowserSession) {

@@ -41,6 +41,7 @@ Record pass/fail, device model, OS version, build number, tester, and evidence l
 | iCloud account change | Browser remains usable and clearly reports degraded/local sync state |
 | IPv6-only | Search, navigation, blocker update, and CloudKit sync remain functional |
 | Memory pressure | Active tab survives; least-recent background WebViews restore on activation |
+| Web content process loss | Active page automatically retries once; a repeated failure stops and reports; terminated background sessions restore only when activated |
 | Biometric cancellation | Protected profile remains locked |
 | Biometric-set change | Protected profile fails closed and device-owner recovery works |
 | 100-cycle stability | 100 navigation, new-tab, switch, and close cycles produce no reproducible crash or data loss |

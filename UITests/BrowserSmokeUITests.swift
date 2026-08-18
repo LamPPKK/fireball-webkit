@@ -79,6 +79,40 @@ final class BrowserSmokeUITests: XCTestCase {
     }
 
     @MainActor
+    func testWebURLExposesNativeShareAction() throws {
+        let app = launchApp()
+        let omnibox = app.textFields["browser.omnibox"]
+        omnibox.tap()
+        omnibox.typeText("example.com")
+        app.buttons["browser.go"].tap()
+
+        XCTAssertTrue(app.buttons["browser.share"].waitForExistence(timeout: 3))
+    }
+
+    @MainActor
+    func testCaptureDocumentationMedia() throws {
+        guard ProcessInfo.processInfo.environment["FIREBALL_CAPTURE_MEDIA"] == "1" else {
+            throw XCTSkip("Documentation media is captured only by the explicit media workflow.")
+        }
+
+        let app = launchApp()
+        let formFactor = UIDevice.current.userInterfaceIdiom == .pad ? "ipad" : "iphone"
+        capture(app, named: "fireball-\(formFactor)-home")
+
+        app.buttons["browser.tabs"].tap()
+        XCTAssertTrue(app.buttons["tabs.new"].waitForExistence(timeout: 3))
+        app.buttons["tabs.new"].tap()
+        app.buttons["browser.tabs"].tap()
+        XCTAssertEqual(app.buttons.matching(identifier: "tab.card").count, 2)
+        capture(app, named: "fireball-\(formFactor)-tabs")
+
+        app.buttons["Done"].tap()
+        app.buttons["browser.settings"].tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 3))
+        capture(app, named: "fireball-\(formFactor)-settings")
+    }
+
+    @MainActor
     func testIPadHardwareKeyboardCreatesTabAndFocusesAddressBar() throws {
         guard UIDevice.current.userInterfaceIdiom == .pad else {
             throw XCTSkip("Hardware-keyboard commands are exercised on the iPad destination.")
@@ -124,5 +158,14 @@ final class BrowserSmokeUITests: XCTestCase {
         try app.performAccessibilityAudit(
             for: [.sufficientElementDescription, .hitRegion, .dynamicType, .textClipped, .trait]
         )
+    }
+
+    @MainActor
+    private func capture(_ app: XCUIApplication, named name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 1.2))
     }
 }

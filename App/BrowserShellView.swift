@@ -80,6 +80,7 @@ struct BrowserShellView: View {
             ZStack(alignment: .top) {
                 if let session = store.activeSession {
                     BrowserWebView(session: session)
+                        .id(session.tabID)
                         .background(Color.fireballBackground)
                     if session.isLoading {
                         GeometryReader { proxy in
@@ -151,6 +152,12 @@ struct BrowserShellView: View {
                     )
                 }
                 .disabled(store.activeTab?.url == nil || store.activeTab?.isPrivate == true)
+                if let url = store.activeTab?.url {
+                    ShareLink(item: url) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                    .accessibilityIdentifier("browser.share")
+                }
                 Button { showLibrary = true } label: {
                     Label("Library", systemImage: "books.vertical")
                 }
@@ -244,6 +251,7 @@ struct BrowserShellView: View {
         .background(Color.fireballGreen, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
         .accessibilityLabel("Go")
         .accessibilityHint("Open the address or search")
+        .accessibilityIdentifier("browser.go")
     }
 
     private var loadingView: some View {

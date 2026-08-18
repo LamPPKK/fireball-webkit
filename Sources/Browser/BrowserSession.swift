@@ -18,7 +18,10 @@ final class BrowserSession {
     @ObservationIgnored var onNavigationFinished: ((BrowserSession) -> Void)?
     @ObservationIgnored var onOpenNewTab: ((URL) -> Void)?
     @ObservationIgnored var onExternalURL: ((URL) -> Void)?
+    @ObservationIgnored var onWebContentProcessTerminated: ((BrowserSession) -> Void)?
     @ObservationIgnored private var pendingContentRules: [WKContentRuleList]?
+    @ObservationIgnored private var recoveryPolicy = WebContentProcessRecoveryPolicy()
+    @ObservationIgnored private var webViewDelegate: BrowserSessionWebViewDelegate?
 
     init(
         tabID: TabID,
@@ -40,6 +43,10 @@ final class BrowserSession {
         }
         webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
+        let delegate = BrowserSessionWebViewDelegate(session: self)
+        webViewDelegate = delegate
+        webView.navigationDelegate = delegate
+        webView.uiDelegate = delegate
     }
 
     var hasPendingPolicyChange: Bool {
@@ -62,6 +69,12 @@ final class BrowserSession {
     }
 
     func load(_ url: URL) {
+        currentURL = url
+        recoveryPolicy.userRequestedReload()
+        loadRequest(url)
+    }
+
+    private func loadRequest(_ url: URL) {
         applyPendingPolicy()
         let policy: URLRequest.CachePolicy = profile.storageMode == .ephemeral
             ? .reloadIgnoringLocalCacheData
@@ -80,6 +93,7 @@ final class BrowserSession {
     }
 
     func reload() {
+        recoveryPolicy.userRequestedReload()
         applyPendingPolicy()
         webView.reload()
     }
@@ -96,7 +110,109 @@ final class BrowserSession {
     }
 
     func navigationDidFinish() {
+        recoveryPolicy.navigationDidFinish()
         synchronize()
         onNavigationFinished?(self)
+    }
+
+    func webContentProcessDidTerminate() {
+        onWebContentProcessTerminated?(self)
+    }
+
+    func recoverFromWebContentProcessTermination(isActive: Bool) -> WebContentProcessRecoveryDecision {
+        let candidate = webView.url ?? currentURL
+        let isRestorable = candidate.map {
+            URLPolicy(searchProvider: profile.searchProvider).allowsNavigation(to: $0)
+        } ?? false
+        let decision = recoveryPolicy.decision(isActive: isActive, hasRestorableURL: isRestorable)
+
+        switch decision {
+        case .reload:
+            if let candidate {
+                loadRequest(candidate)
+            }
+        case .discard, .reportFailure:
+            stopLoading()
+            isLoading = false
+            onStateChange?(self)
+        }
+        return decision
+    }
+}
+
+@MainActor
+private final class BrowserSessionWebViewDelegate: NSObject, WKNavigationDelegate, WKUIDelegate {
+    private weak var session: BrowserSession?
+
+    init(session: BrowserSession) {
+        self.session = session
+    }
+
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation?) {
+        session?.synchronize()
+    }
+
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation?) {
+        session?.synchronize()
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {
+        session?.navigationDidFinish()
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation?, withError error: any Error) {
+        session?.synchronize()
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        didFailProvisionalNavigation navigation: WKNavigation?,
+        withError error: any Error
+    ) {
+        session?.synchronize()
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        session?.webContentProcessDidTerminate()
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction
+    ) async -> WKNavigationActionPolicy {
+        guard let session else { return .cancel }
+        switch URLPolicy(searchProvider: session.profile.searchProvider)
+            .disposition(for: navigationAction.request.url) {
+        case .web:
+            session.applyPendingPolicy()
+            return .allow
+        case .externalConfirmation:
+            if let url = navigationAction.request.url {
+                session.onExternalURL?(url)
+            }
+            return .cancel
+        case .blocked:
+            return .cancel
+        }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        createWebViewWith configuration: WKWebViewConfiguration,
+        for navigationAction: WKNavigationAction,
+        windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        guard let session,
+              navigationAction.targetFrame == nil,
+              let url = navigationAction.request.url else { return nil }
+        switch URLPolicy(searchProvider: session.profile.searchProvider).disposition(for: url) {
+        case .web:
+            session.onOpenNewTab?(url)
+        case .externalConfirmation:
+            session.onExternalURL?(url)
+        case .blocked:
+            break
+        }
+        return nil
     }
 }

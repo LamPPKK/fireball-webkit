@@ -1,0 +1,106 @@
+name: blocker-rules
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Immutable rules version, for example 2026.08.19.1
+        required: true
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  release:
+    environment: blocker-release
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - name: Convert pinned EasyList sources
+        run: python3 Tools/build_blocker.py --sources Blocker/sources.json --output build/blocker
+      - name: Materialize protected signing key
+        env:
+          BLOCKER_SIGNING_KEY_BASE64: ${{ secrets.BLOCKER_SIGNING_KEY_BASE64 }}
+        run: |
+          test -n "$BLOCKER_SIGNING_KEY_BASE64"
+          printf '%s' "$BLOCKER_SIGNING_KEY_BASE64" | base64 -D > "$RUNNER_TEMP/blocker-signing-key.pem"
+          chmod 600 "$RUNNER_TEMP/blocker-signing-key.pem"
+      - name: Verify release public key
+        env:
+          BLOCKER_PUBLIC_KEY_BASE64: ${{ secrets.BLOCKER_PUBLIC_KEY_BASE64 }}
+        run: |
+          derived="$(openssl pkey -in "$RUNNER_TEMP/blocker-signing-key.pem" -pubout -outform DER | tail -c 32 | base64 | tr -d '\n')"
+          test "$derived" = "$BLOCKER_PUBLIC_KEY_BASE64"
+      - name: Select supported iPhone simulator
+        run: printf 'FIREBALL_IPHONE_UDID=%s\n' "$(python3 Tools/select_simulator.py --family iphone)" >> "$GITHUB_ENV"
+      - name: Compile every shard with WebKit
+        run: |
+          xcodegen generate
+          xcodebuild test \
+            -project FireballWebKit.xcodeproj \
+            -scheme FireballWebKit \
+            -destination "platform=iOS Simulator,id=$FIREBALL_IPHONE_UDID" \
+            -only-testing:FireballWebKitTests/BlockerArtifactCompilationTests \
+            CODE_SIGNING_ALLOWED=NO \
+            FIREBALL_RULE_ARTIFACT_DIRECTORY="$PWD/build/blocker"
+      - name: Sign manifest
+        run: |
+          python3 Tools/create_blocker_manifest.py \
+            --index build/blocker/artifact-index.json \
+            --base-url "https://lamppkk.github.io/fireball-webkit/blocker/${{ inputs.version }}" \
+            --version "${{ inputs.version }}" \
+            --private-key "$RUNNER_TEMP/blocker-signing-key.pem" \
+            --output build/blocker/manifest-v1.json
+      - name: Verify Python signature with the app verifier
+        env:
+          BLOCKER_PUBLIC_KEY_BASE64: ${{ secrets.BLOCKER_PUBLIC_KEY_BASE64 }}
+        run: |
+          xcodebuild test \
+            -project FireballWebKit.xcodeproj \
+            -scheme FireballWebKit \
+            -destination "platform=iOS Simulator,id=$FIREBALL_IPHONE_UDID" \
+            -only-testing:FireballWebKitTests/BlockerExternalManifestTests \
+            CODE_SIGNING_ALLOWED=NO \
+            FIREBALL_BLOCKER_MANIFEST="$PWD/build/blocker/manifest-v1.json" \
+            FIREBALL_BLOCKER_ARTIFACT_DIRECTORY="$PWD/build/blocker" \
+            FIREBALL_BLOCKER_PUBLIC_KEY_BASE64="$BLOCKER_PUBLIC_KEY_BASE64"
+      - name: Publish immutable source and derived artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "blocker-${{ inputs.version }}" \
+            build/blocker/content-rules-*.json \
+            build/blocker/manifest-v1.json \
+            build/blocker/conversion-report.json \
+            build/blocker/artifact-index.json \
+            Blocker/sources.json \
+            --title "Fireball blocker ${{ inputs.version }}" \
+            --notes "Derived from the pinned EasyList and EasyPrivacy commit in sources.json. GPL-3.0-or-later attribution: https://easylist.to/pages/licence.html"
+      - name: Deploy stable blocker URLs and policy pages
+        run: |
+          mkdir -p "site/blocker/${{ inputs.version }}"
+          cp -R docs/. site/
+          cp Blocker/manifest.schema.json site/blocker-manifest-v1.schema.json
+          cp build/blocker/content-rules-*.json "site/blocker/${{ inputs.version }}/"
+          cp build/blocker/manifest-v1.json build/blocker/conversion-report.json site/blocker/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: release
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-24.04
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

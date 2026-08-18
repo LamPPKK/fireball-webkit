@@ -10,13 +10,14 @@ struct BrowserWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         session.webView.navigationDelegate = context.coordinator
+        session.webView.uiDelegate = context.coordinator
         return session.webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {}
 
     @MainActor
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         private let session: BrowserSession
 
         init(session: BrowserSession) {
@@ -32,7 +33,7 @@ struct BrowserWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {
-            session.synchronize()
+            session.navigationDidFinish()
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation?, withError error: any Error) {
@@ -41,9 +42,28 @@ struct BrowserWebView: UIViewRepresentable {
 
         func webView(
             _ webView: WKWebView,
+            didFailProvisionalNavigation navigation: WKNavigation?,
+            withError error: any Error
+        ) {
+            session.synchronize()
+        }
+
+        func webView(
+            _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction
         ) async -> WKNavigationActionPolicy {
-            URLPolicy().allowsNavigation(to: navigationAction.request.url) ? .allow : .cancel
+            switch URLPolicy(searchProvider: session.profile.searchProvider)
+                .disposition(for: navigationAction.request.url) {
+            case .web:
+                return .allow
+            case .externalConfirmation:
+                if let url = navigationAction.request.url {
+                    session.onExternalURL?(url)
+                }
+                return .cancel
+            case .blocked:
+                return .cancel
+            }
         }
 
         func webView(
@@ -52,10 +72,15 @@ struct BrowserWebView: UIViewRepresentable {
             for navigationAction: WKNavigationAction,
             windowFeatures: WKWindowFeatures
         ) -> WKWebView? {
-            if navigationAction.targetFrame == nil,
-               let url = navigationAction.request.url,
-               URLPolicy().allowsNavigation(to: url) {
-                session.load(url)
+            if navigationAction.targetFrame == nil, let url = navigationAction.request.url {
+                switch URLPolicy(searchProvider: session.profile.searchProvider).disposition(for: url) {
+                case .web:
+                    session.onOpenNewTab?(url)
+                case .externalConfirmation:
+                    session.onExternalURL?(url)
+                case .blocked:
+                    break
+                }
             }
             return nil
         }

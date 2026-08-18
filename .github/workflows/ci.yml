@@ -8,15 +8,39 @@ permissions:
   contents: read
 
 jobs:
-  ios-foundation:
+  ios:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - run: brew install xcodegen
       - run: xcodegen generate
-      - run: |
+      - name: Select supported simulators
+        run: |
+          printf 'FIREBALL_IPHONE_UDID=%s\n' "$(python3 Tools/select_simulator.py --family iphone)" >> "$GITHUB_ENV"
+          printf 'FIREBALL_IPAD_UDID=%s\n' "$(python3 Tools/select_simulator.py --family ipad)" >> "$GITHUB_ENV"
+      - name: Unit tests on iPhone
+        run: |
           xcodebuild -project FireballWebKit.xcodeproj \
             -scheme FireballWebKit \
-            -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -destination "platform=iOS Simulator,id=$FIREBALL_IPHONE_UDID" \
             CODE_SIGNING_ALLOWED=NO test
+      - name: Adaptive build on iPad
+        run: |
+          xcodebuild -project FireballWebKit.xcodeproj \
+            -scheme FireballWebKit \
+            -destination "platform=iOS Simulator,id=$FIREBALL_IPAD_UDID" \
+            CODE_SIGNING_ALLOWED=NO build
+
+  blocker-tools:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest discover -s Tools/tests
+      - run: python3 -m py_compile Tools/build_blocker.py Tools/create_blocker_manifest.py Tools/select_simulator.py
+
+  configuration:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: plutil -lint Resources/PrivacyInfo.xcprivacy Config/*.plist Config/*.entitlements
+      - run: git diff --check

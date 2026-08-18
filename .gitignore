@@ -1,4 +1,6 @@
 DerivedData/
 build/
+__pycache__/
+*.pyc
 *.xcuserstate
 xcuserdata/

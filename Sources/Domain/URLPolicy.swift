@@ -14,8 +14,20 @@ enum URLPolicyError: LocalizedError, Equatable {
     }
 }
 
+enum NavigationDisposition: Equatable, Sendable {
+    case web
+    case externalConfirmation
+    case blocked
+}
+
 struct URLPolicy: Sendable {
+    let searchProvider: SearchProvider
     private let allowedSchemes = Set(["http", "https"])
+    private let externalSchemes = Set(["mailto", "tel"])
+
+    init(searchProvider: SearchProvider = .brave) {
+        self.searchProvider = searchProvider
+    }
 
     func resolve(_ rawInput: String) throws -> URL {
         let input = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -28,18 +40,28 @@ struct URLPolicy: Sendable {
         }
 
         if input.contains(".") && !input.contains(" ") {
-            guard let url = URL(string: "https://\(input)"), url.host != nil else { throw URLPolicyError.invalidURL }
+            guard let url = URL(string: "https://\(input)"), url.host != nil else {
+                throw URLPolicyError.invalidURL
+            }
             return url
         }
 
-        var search = URLComponents(string: "https://duckduckgo.com/")!
-        search.queryItems = [URLQueryItem(name: "q", value: input)]
-        guard let url = search.url else { throw URLPolicyError.invalidURL }
+        guard let url = searchProvider.searchURL(for: input) else { throw URLPolicyError.invalidURL }
         return url
     }
 
+    func disposition(for url: URL?) -> NavigationDisposition {
+        guard let url, let scheme = url.scheme?.lowercased() else { return .blocked }
+        if allowedSchemes.contains(scheme) || (scheme == "about" && url.absoluteString == "about:blank") {
+            return .web
+        }
+        if externalSchemes.contains(scheme) {
+            return .externalConfirmation
+        }
+        return .blocked
+    }
+
     func allowsNavigation(to url: URL?) -> Bool {
-        guard let url, let scheme = url.scheme?.lowercased() else { return false }
-        return allowedSchemes.contains(scheme) || (scheme == "about" && url.absoluteString == "about:blank")
+        disposition(for: url) == .web
     }
 }

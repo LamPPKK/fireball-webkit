@@ -1,0 +1,15 @@
+{
+  "repository": "https://github.com/easylist/easylist",
+  "commit": "3bb41ea758bb7e1c2e6f783885bb274c7051035d",
+  "license": "GPL-3.0-or-later",
+  "files": [
+    {
+      "name": "EasyList",
+      "url": "https://raw.githubusercontent.com/easylist/easylist/3bb41ea758bb7e1c2e6f783885bb274c7051035d/easylist.template"
+    },
+    {
+      "name": "EasyPrivacy",
+      "url": "https://raw.githubusercontent.com/easylist/easylist/3bb41ea758bb7e1c2e6f783885bb274c7051035d/easyprivacy.template"
+    }
+  ]
+}

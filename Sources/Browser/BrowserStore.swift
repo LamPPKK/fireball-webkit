@@ -1,0 +1,675 @@
+import Observation
+import UIKit
+import WebKit
+
+@MainActor
+@Observable
+final class BrowserStore {
+    private static let historyLifetime: TimeInterval = 90 * 24 * 60 * 60
+
+    var profiles: [BrowserProfile] = []
+    var spaces: [BrowserSpace] = []
+    var tabs: [BrowserTab] = []
+    var bookmarks: [Bookmark] = []
+    var history: [HistoryVisit] = []
+    var settings = BrowserSettings()
+    var selectedSpaceID: SpaceID?
+    var selectedTabID: TabID?
+    var syncStatus: BrowserSyncStatus = .starting
+    var isReady = false
+    var errorMessage: String?
+    var privacyShieldVisible = false
+    var privateSpaceLocked = false
+    var blockerStatus = "BUNDLED RULES"
+    var pendingExternalURL: URL?
+
+    @ObservationIgnored private let repository: any BrowserRepository
+    @ObservationIgnored private let dataStores: WebsiteDataStoreRegistry
+    @ObservationIgnored private let ruleCompiler: any ContentRuleCompiling
+    @ObservationIgnored private let profileLocks: any ProfileLocking
+    @ObservationIgnored private let ownerAuthenticator: any OwnerAuthenticating
+    @ObservationIgnored private let loadBundledRules: Bool
+    @ObservationIgnored private let blockerUpdater: BlockerUpdateService?
+    @ObservationIgnored private let blockerManifestURL: URL?
+    @ObservationIgnored private var sessions: [TabID: BrowserSession] = [:]
+    @ObservationIgnored private var thumbnails: [TabID: UIImage] = [:]
+    @ObservationIgnored private var contentRules: [WKContentRuleList] = []
+    @ObservationIgnored private var unlockedProfiles: Set<ProfileID> = []
+
+    init(
+        repository: any BrowserRepository,
+        dataStores: WebsiteDataStoreRegistry = WebsiteDataStoreRegistry(),
+        ruleCompiler: any ContentRuleCompiling = ContentRuleService(),
+        profileLocks: any ProfileLocking = KeychainProfileLockStore(service: "com.fireball.browser.profile-lock"),
+        ownerAuthenticator: any OwnerAuthenticating = LocalOwnerAuthenticator(),
+        loadBundledRules: Bool = true,
+        blockerUpdater: BlockerUpdateService? = nil,
+        blockerManifestURL: URL? = nil
+    ) {
+        self.repository = repository
+        self.dataStores = dataStores
+        self.ruleCompiler = ruleCompiler
+        self.profileLocks = profileLocks
+        self.ownerAuthenticator = ownerAuthenticator
+        self.loadBundledRules = loadBundledRules
+        self.blockerUpdater = blockerUpdater
+        self.blockerManifestURL = blockerManifestURL
+    }
+
+    var selectedSpace: BrowserSpace? {
+        spaces.first { $0.id == selectedSpaceID }
+    }
+
+    var activeProfile: BrowserProfile? {
+        guard let selectedSpace else { return nil }
+        return profiles.first { $0.id == selectedSpace.profileID }
+    }
+
+    var activeTab: BrowserTab? {
+        tabs.first { $0.id == selectedTabID }
+    }
+
+    var activeSession: BrowserSession? {
+        guard let activeTab, activeTab.url != nil else { return nil }
+        return session(for: activeTab)
+    }
+
+    var tabsInSelectedSpace: [BrowserTab] {
+        guard let selectedSpaceID else { return [] }
+        return sorted(tabs.filter { $0.spaceID == selectedSpaceID })
+    }
+
+    var regularProfiles: [BrowserProfile] {
+        profiles.filter { $0.storageMode == .persistent }
+    }
+
+    var selectedProfileIsLocked: Bool {
+        guard let activeProfile else { return false }
+        if activeProfile.storageMode == .ephemeral {
+            return privateSpaceLocked
+        }
+        return profileLocks.isEnabled(for: activeProfile.id) && !unlockedProfiles.contains(activeProfile.id)
+    }
+
+    func bootstrap() async {
+        guard !isReady else { return }
+        repository.onExternalChange = { [weak self] in
+            Task { @MainActor [weak self] in
+                await self?.mergeExternalChanges()
+            }
+        }
+        do {
+            let snapshot = try await repository.load()
+            profiles = snapshot.profiles
+            spaces = sorted(snapshot.spaces)
+            tabs = SessionRestoration().restorableTabs(from: snapshot.tabs)
+            bookmarks = snapshot.bookmarks.sorted { $0.createdAt > $1.createdAt }
+            history = snapshot.history
+            settings = snapshot.settings
+            purgeExpiredHistory(now: .now)
+            syncStatus = repository.syncStatus
+            try await loadContentRules()
+            await refreshBlockerRules(force: false)
+            ensureSelectionAndTab()
+            try persist()
+        } catch {
+            let fallback = BrowserSnapshot.initial()
+            apply(fallback)
+            syncStatus = .degraded(error.localizedDescription)
+            errorMessage = "Browser storage is unavailable. This session may not persist changes."
+            ensureSelectionAndTab()
+        }
+        isReady = true
+    }
+
+    func navigate(_ rawInput: String) throws {
+        guard let profile = activeProfile, let tab = activeTab else { return }
+        let url = try URLPolicy(searchProvider: profile.searchProvider).resolve(rawInput)
+        updateTab(tab.id, url: url, title: tab.title)
+        session(for: tab)?.load(url)
+    }
+
+    func openHome() {
+        guard let tabID = selectedTabID else { return }
+        sessions.removeValue(forKey: tabID)?.webView.stopLoading()
+        updateTab(tabID, url: nil, title: "New Tab")
+    }
+
+    @discardableResult
+    func createTab(url: URL? = nil, in spaceID: SpaceID? = nil, activate: Bool = true) -> BrowserTab? {
+        guard let space = spaces.first(where: { $0.id == (spaceID ?? selectedSpaceID) }) else { return nil }
+        let now = Date.now
+        let tab = BrowserTab(
+            id: TabID(),
+            spaceID: space.id,
+            url: url,
+            title: url?.host() ?? "New Tab",
+            sortIndex: (tabs.filter { $0.spaceID == space.id }.map(\.sortIndex).max() ?? -1) + 1,
+            lastActiveAt: now,
+            storageMode: space.storageMode,
+            modifiedAt: now
+        )
+        tabs.append(tab)
+        if activate {
+            selectedSpaceID = space.id
+            selectedTabID = tab.id
+            setSelectedTab(tab.id, in: space.id)
+        }
+        tryPersist()
+        if url != nil {
+            _ = session(for: tab)
+        }
+        return tab
+    }
+
+    func activateTab(_ tabID: TabID) {
+        guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
+        selectedSpaceID = tab.spaceID
+        selectedTabID = tab.id
+        setSelectedTab(tab.id, in: tab.spaceID)
+        if let index = tabs.firstIndex(where: { $0.id == tab.id }) {
+            tabs[index].lastActiveAt = .now
+            tabs[index].modifiedAt = .now
+        }
+        tryPersist()
+    }
+
+    func closeTab(_ tabID: TabID) {
+        guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
+        sessions.removeValue(forKey: tabID)?.webView.stopLoading()
+        thumbnails.removeValue(forKey: tabID)
+        tabs.removeAll { $0.id == tabID }
+
+        let remaining = sorted(tabs.filter { $0.spaceID == tab.spaceID })
+        if selectedTabID == tabID {
+            selectedTabID = remaining.last?.id
+            setSelectedTab(selectedTabID, in: tab.spaceID)
+        }
+        if remaining.isEmpty {
+            if tab.storageMode == .ephemeral {
+                closePrivateSpace(tab.spaceID)
+            } else {
+                _ = createTab(in: tab.spaceID)
+            }
+        }
+        tryPersist()
+    }
+
+    func createSpace(name: String, profileID: ProfileID) {
+        guard profiles.contains(where: { $0.id == profileID && $0.storageMode == .persistent }) else { return }
+        let now = Date.now
+        let space = BrowserSpace(
+            id: SpaceID(),
+            profileID: profileID,
+            name: normalizedName(name, fallback: "Space \(spaces.count + 1)"),
+            sortIndex: (spaces.map(\.sortIndex).max() ?? -1) + 1,
+            selectedTabID: nil,
+            storageMode: .persistent,
+            modifiedAt: now
+        )
+        spaces.append(space)
+        selectedSpaceID = space.id
+        _ = createTab(in: space.id)
+        tryPersist()
+    }
+
+    func createPrivateSpace() {
+        let now = Date.now
+        let profile = BrowserProfile.privateProfile(now: now)
+        let space = BrowserSpace(
+            id: SpaceID(),
+            profileID: profile.id,
+            name: "Private",
+            sortIndex: (spaces.map(\.sortIndex).max() ?? -1) + 1,
+            selectedTabID: nil,
+            storageMode: .ephemeral,
+            modifiedAt: now
+        )
+        profiles.append(profile)
+        spaces.append(space)
+        selectedSpaceID = space.id
+        _ = createTab(in: space.id)
+    }
+
+    func selectSpace(_ spaceID: SpaceID) async {
+        guard let space = spaces.first(where: { $0.id == spaceID }) else { return }
+        selectedSpaceID = space.id
+        selectedTabID = space.selectedTabID ?? sorted(tabs.filter { $0.spaceID == space.id }).last?.id
+        if selectedTabID == nil {
+            _ = createTab(in: space.id)
+        }
+        await unlockActiveProfileIfNeeded()
+    }
+
+    func createProfile(name: String, colorHex: String = "64D8FF") {
+        let now = Date.now
+        let profile = BrowserProfile(
+            id: ProfileID(),
+            name: normalizedName(name, fallback: "Profile \(regularProfiles.count + 1)"),
+            colorHex: colorHex,
+            storageMode: .persistent,
+            searchProvider: .brave,
+            blockerEnabled: true,
+            modifiedAt: now
+        )
+        profiles.append(profile)
+        createSpace(name: profile.name, profileID: profile.id)
+    }
+
+    func deleteProfile(_ profileID: ProfileID) async {
+        guard regularProfiles.count > 1,
+              profiles.contains(where: { $0.id == profileID && $0.storageMode == .persistent }) else {
+            errorMessage = "Keep at least one regular profile."
+            return
+        }
+        let removedSpaces = Set(spaces.filter { $0.profileID == profileID }.map(\.id))
+        let removedTabs = tabs.filter { removedSpaces.contains($0.spaceID) }.map(\.id)
+        for tabID in removedTabs {
+            sessions.removeValue(forKey: tabID)?.webView.stopLoading()
+            thumbnails.removeValue(forKey: tabID)
+        }
+        do {
+            try await dataStores.removePersistentStore(for: profileID)
+            try profileLocks.disable(for: profileID)
+            profiles.removeAll { $0.id == profileID }
+            spaces.removeAll { $0.profileID == profileID }
+            tabs.removeAll { removedSpaces.contains($0.spaceID) }
+            bookmarks.removeAll { $0.profileID == profileID }
+            history.removeAll { $0.profileID == profileID }
+            ensureSelectionAndTab()
+            try persist()
+        } catch {
+            errorMessage = "Profile deletion failed: \(error.localizedDescription)"
+        }
+    }
+
+    func toggleBookmarkForActiveTab() {
+        guard let profile = activeProfile, profile.storageMode == .persistent,
+              let tab = activeTab, let url = tab.url else { return }
+        if let existing = bookmarks.firstIndex(where: { $0.profileID == profile.id && $0.url == url }) {
+            bookmarks.remove(at: existing)
+        } else {
+            let now = Date.now
+            bookmarks.insert(
+                Bookmark(
+                    id: BookmarkID(),
+                    profileID: profile.id,
+                    url: url,
+                    title: tab.title,
+                    createdAt: now,
+                    modifiedAt: now
+                ),
+                at: 0
+            )
+        }
+        tryPersist()
+    }
+
+    func isBookmarked(_ url: URL?) -> Bool {
+        guard let profile = activeProfile, let url else { return false }
+        return bookmarks.contains { $0.profileID == profile.id && $0.url == url }
+    }
+
+    func removeBookmark(_ id: BookmarkID) {
+        bookmarks.removeAll { $0.id == id }
+        tryPersist()
+    }
+
+    func clearHistory(for profileID: ProfileID) {
+        history.removeAll { $0.profileID == profileID }
+        tryPersist()
+    }
+
+    func setHistorySyncEnabled(_ enabled: Bool) {
+        settings.historySyncEnabled = enabled
+        settings.modifiedAt = .now
+        tryPersist()
+    }
+
+    func updateSearchProvider(_ provider: SearchProvider, for profileID: ProfileID) {
+        guard let index = profiles.firstIndex(where: { $0.id == profileID }) else { return }
+        profiles[index].searchProvider = provider
+        profiles[index].modifiedAt = .now
+        resetSessions(for: profileID)
+        tryPersist()
+    }
+
+    func setBlockerEnabled(_ enabled: Bool, for profileID: ProfileID) {
+        guard let index = profiles.firstIndex(where: { $0.id == profileID }) else { return }
+        profiles[index].blockerEnabled = enabled
+        profiles[index].modifiedAt = .now
+        resetSessions(for: profileID)
+        tryPersist()
+    }
+
+    func setBiometricLockEnabled(_ enabled: Bool, for profileID: ProfileID) async {
+        do {
+            if enabled {
+                try profileLocks.enable(for: profileID)
+                unlockedProfiles.remove(profileID)
+            } else {
+                try await ownerAuthenticator.authenticate(reason: "Disable protection for this Fireball profile")
+                try profileLocks.disable(for: profileID)
+                unlockedProfiles.insert(profileID)
+            }
+        } catch {
+            errorMessage = "Profile protection was not changed: \(error.localizedDescription)"
+        }
+    }
+
+    func biometricLockEnabled(for profileID: ProfileID) -> Bool {
+        profileLocks.isEnabled(for: profileID)
+    }
+
+    func unlockActiveProfileIfNeeded() async {
+        guard let profile = activeProfile else { return }
+        if profile.storageMode == .ephemeral, privateSpaceLocked {
+            do {
+                try await ownerAuthenticator.authenticate(reason: "Unlock the private Fireball space")
+                privateSpaceLocked = false
+            } catch {
+                errorMessage = "The private space remains locked."
+            }
+            return
+        }
+        guard profileLocks.isEnabled(for: profile.id),
+              !unlockedProfiles.contains(profile.id) else { return }
+        do {
+            try await profileLocks.unlock(profileID: profile.id, reason: "Unlock \(profile.name) in Fireball")
+            unlockedProfiles.insert(profile.id)
+        } catch {
+            errorMessage = "Profile remains locked."
+        }
+    }
+
+    func recoverActiveProfileAccess() async {
+        guard let profile = activeProfile, profileLocks.isEnabled(for: profile.id) else { return }
+        do {
+            try await ownerAuthenticator.authenticate(reason: "Recover access to \(profile.name) in Fireball")
+            do {
+                try profileLocks.enable(for: profile.id)
+            } catch {
+                try profileLocks.disable(for: profile.id)
+            }
+            unlockedProfiles.insert(profile.id)
+        } catch {
+            errorMessage = "Device-owner authentication failed. The profile remains locked."
+        }
+    }
+
+    func lockProtectedContent() {
+        if activeProfile?.storageMode == .ephemeral {
+            privateSpaceLocked = true
+        }
+        unlockedProfiles.removeAll()
+        privacyShieldVisible = true
+    }
+
+    func revealAfterForeground() async {
+        privacyShieldVisible = false
+        await unlockActiveProfileIfNeeded()
+    }
+
+    func releaseBackgroundSessions() {
+        let activeID = selectedTabID
+        let backgroundIDs = sessions.keys.filter { $0 != activeID }
+        for tabID in backgroundIDs {
+            guard let session = sessions[tabID] else { continue }
+            let configuration = WKSnapshotConfiguration()
+            configuration.afterScreenUpdates = false
+            session.webView.takeSnapshot(with: configuration) { [weak self] image, _ in
+                if let image {
+                    self?.thumbnails[tabID] = image
+                }
+            }
+            session.webView.stopLoading()
+            sessions.removeValue(forKey: tabID)
+        }
+    }
+
+    func thumbnail(for tabID: TabID) -> UIImage? {
+        thumbnails[tabID]
+    }
+
+    func applyUpdatedContentRules(_ rules: [WKContentRuleList], status: String) {
+        contentRules = rules
+        blockerStatus = status
+        for session in sessions.values where session.profile.blockerEnabled {
+            session.webView.configuration.userContentController.removeAllContentRuleLists()
+            for rule in rules {
+                session.webView.configuration.userContentController.add(rule)
+            }
+        }
+    }
+
+    func refreshBlockerRules(force: Bool = true) async {
+        guard let blockerUpdater, let blockerManifestURL else {
+            blockerStatus = contentRules.isEmpty ? "UNAVAILABLE" : "BUNDLED RULES"
+            return
+        }
+        do {
+            let result = try await blockerUpdater.update(from: blockerManifestURL, force: force)
+            let installed = try await blockerUpdater.installedRules()
+            if !installed.isEmpty {
+                applyUpdatedContentRules(installed, status: blockerStatus(for: result))
+            }
+        } catch {
+            blockerStatus = contentRules.isEmpty ? "UPDATE FAILED" : "LAST-KNOWN-GOOD"
+        }
+    }
+
+    private func loadContentRules() async throws {
+        guard loadBundledRules else { return }
+        if let resource = Bundle.main.url(forResource: "content-rules", withExtension: "json") {
+            let encoded = try String(contentsOf: resource, encoding: .utf8)
+            contentRules = [try await ruleCompiler.compile(identifier: "fireball-bundled-v1", encodedRules: encoded)]
+        }
+        if let installed = try await blockerUpdater?.installedRules(), !installed.isEmpty {
+            contentRules = installed
+            blockerStatus = "INSTALLED RULES"
+        }
+    }
+
+    private func mergeExternalChanges() async {
+        do {
+            let snapshot = try await repository.load()
+            let privateProfiles = profiles.filter { $0.storageMode == .ephemeral }
+            let privateSpaces = spaces.filter { $0.storageMode == .ephemeral }
+            let privateTabs = tabs.filter { $0.storageMode == .ephemeral }
+            let incomingTabIDs = Set(snapshot.tabs.map(\.id))
+            for tab in tabs where tab.storageMode == .persistent && !incomingTabIDs.contains(tab.id) {
+                sessions.removeValue(forKey: tab.id)?.webView.stopLoading()
+                thumbnails.removeValue(forKey: tab.id)
+            }
+            profiles = snapshot.profiles + privateProfiles
+            spaces = sorted(snapshot.spaces + privateSpaces)
+            tabs = SessionRestoration().restorableTabs(from: snapshot.tabs) + privateTabs
+            bookmarks = snapshot.bookmarks.sorted { $0.createdAt > $1.createdAt }
+            history = snapshot.history
+            settings = snapshot.settings
+            syncStatus = repository.syncStatus
+            ensureSelectionAndTab()
+        } catch {
+            syncStatus = .degraded(error.localizedDescription)
+        }
+    }
+
+    private func blockerStatus(for result: BlockerUpdateResult) -> String {
+        switch result {
+        case .notDue: "UP TO DATE"
+        case .unchanged: "UP TO DATE"
+        case let .installed(version): "RULES \(version)"
+        }
+    }
+
+    private func session(for tab: BrowserTab) -> BrowserSession? {
+        if let existing = sessions[tab.id] {
+            return existing
+        }
+        guard let space = spaces.first(where: { $0.id == tab.spaceID }),
+              let profile = profiles.first(where: { $0.id == space.profileID }) else { return nil }
+        let session = BrowserSession(
+            tabID: tab.id,
+            profile: profile,
+            dataStore: dataStores.store(for: profile),
+            contentRules: contentRules
+        )
+        session.onStateChange = { [weak self] session in
+            self?.syncTabState(from: session)
+        }
+        session.onNavigationFinished = { [weak self] session in
+            self?.recordHistory(from: session)
+        }
+        session.onOpenNewTab = { [weak self] url in
+            _ = self?.createTab(url: url, in: tab.spaceID)
+        }
+        session.onExternalURL = { [weak self] url in
+            self?.pendingExternalURL = url
+        }
+        sessions[tab.id] = session
+        if let url = tab.url {
+            session.load(url)
+        }
+        return session
+    }
+
+    private func syncTabState(from session: BrowserSession) {
+        guard let index = tabs.firstIndex(where: { $0.id == session.tabID }) else { return }
+        tabs[index].url = session.currentURL
+        tabs[index].title = session.pageTitle ?? session.currentURL?.host() ?? "New Tab"
+        tabs[index].modifiedAt = .now
+        tryPersist()
+    }
+
+    private func recordHistory(from session: BrowserSession) {
+        guard session.profile.storageMode == .persistent,
+              let url = session.currentURL,
+              URLPolicy(searchProvider: session.profile.searchProvider).allowsNavigation(to: url) else { return }
+        let now = Date.now
+        history.insert(
+            HistoryVisit(
+                id: HistoryVisitID(),
+                profileID: session.profile.id,
+                url: url,
+                title: session.pageTitle ?? url.host() ?? url.absoluteString,
+                visitedAt: now,
+                modifiedAt: now
+            ),
+            at: 0
+        )
+        purgeExpiredHistory(now: now)
+        tryPersist()
+    }
+
+    private func purgeExpiredHistory(now: Date) {
+        let cutoff = now.addingTimeInterval(-Self.historyLifetime)
+        history.removeAll { $0.visitedAt < cutoff }
+    }
+
+    private func updateTab(_ tabID: TabID, url: URL?, title: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        tabs[index].url = url
+        tabs[index].title = title
+        tabs[index].modifiedAt = .now
+        tabs[index].lastActiveAt = .now
+        tryPersist()
+    }
+
+    private func setSelectedTab(_ tabID: TabID?, in spaceID: SpaceID) {
+        guard let index = spaces.firstIndex(where: { $0.id == spaceID }) else { return }
+        spaces[index].selectedTabID = tabID
+        spaces[index].modifiedAt = .now
+    }
+
+    private func ensureSelectionAndTab() {
+        if profiles.isEmpty {
+            apply(.initial())
+        }
+        if spaces.filter({ $0.storageMode == .persistent }).isEmpty, let profile = regularProfiles.first {
+            createSpace(name: "Main", profileID: profile.id)
+            return
+        }
+        if selectedSpaceID == nil || !spaces.contains(where: { $0.id == selectedSpaceID }) {
+            selectedSpaceID = sorted(spaces).first?.id
+        }
+        guard let space = selectedSpace else { return }
+        selectedTabID = space.selectedTabID
+            ?? sorted(tabs.filter { $0.spaceID == space.id }).last?.id
+        if selectedTabID == nil {
+            _ = createTab(in: space.id)
+        }
+    }
+
+    private func closePrivateSpace(_ spaceID: SpaceID) {
+        guard let space = spaces.first(where: { $0.id == spaceID }), space.storageMode == .ephemeral else { return }
+        spaces.removeAll { $0.id == spaceID }
+        profiles.removeAll { $0.id == space.profileID }
+        dataStores.removeEphemeralStore(for: space.profileID)
+        selectedSpaceID = sorted(spaces).first?.id
+        selectedTabID = selectedSpace?.selectedTabID
+        ensureSelectionAndTab()
+    }
+
+    private func resetSessions(for profileID: ProfileID) {
+        let affectedSpaces = Set(spaces.filter { $0.profileID == profileID }.map(\.id))
+        let affectedTabs = tabs.filter { affectedSpaces.contains($0.spaceID) }
+        for tab in affectedTabs {
+            sessions.removeValue(forKey: tab.id)?.webView.stopLoading()
+        }
+    }
+
+    private func persist() throws {
+        try repository.save(persistedSnapshot())
+    }
+
+    private func tryPersist() {
+        do {
+            try persist()
+        } catch {
+            syncStatus = .degraded(error.localizedDescription)
+        }
+    }
+
+    private func persistedSnapshot() -> BrowserSnapshot {
+        BrowserSnapshot(
+            profiles: profiles.filter { $0.storageMode == .persistent },
+            spaces: spaces.filter { $0.storageMode == .persistent },
+            tabs: tabs.filter { $0.storageMode == .persistent },
+            bookmarks: bookmarks,
+            history: history,
+            settings: settings
+        )
+    }
+
+    private func apply(_ snapshot: BrowserSnapshot) {
+        profiles = snapshot.profiles
+        spaces = sorted(snapshot.spaces)
+        tabs = SessionRestoration().restorableTabs(from: snapshot.tabs)
+        bookmarks = snapshot.bookmarks
+        history = snapshot.history
+        settings = snapshot.settings
+    }
+
+    private func sorted(_ spaces: [BrowserSpace]) -> [BrowserSpace] {
+        spaces.sorted { lhs, rhs in
+            if lhs.sortIndex == rhs.sortIndex {
+                return lhs.id.rawValue.uuidString < rhs.id.rawValue.uuidString
+            }
+            return lhs.sortIndex < rhs.sortIndex
+        }
+    }
+
+    private func sorted(_ tabs: [BrowserTab]) -> [BrowserTab] {
+        tabs.sorted { lhs, rhs in
+            if lhs.sortIndex == rhs.sortIndex {
+                return lhs.id.rawValue.uuidString < rhs.id.rawValue.uuidString
+            }
+            return lhs.sortIndex < rhs.sortIndex
+        }
+    }
+
+    private func normalizedName(_ name: String, fallback: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return String((trimmed.isEmpty ? fallback : trimmed).prefix(48))
+    }
+}

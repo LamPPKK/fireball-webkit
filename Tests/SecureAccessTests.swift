@@ -14,7 +14,7 @@ final class SecureAccessTests: XCTestCase {
     }
 }
 
-private struct FakeOwnerAuthenticator: OwnerAuthenticating {
+struct FakeOwnerAuthenticator: OwnerAuthenticating {
     let result: Result<Void, any Error>
 
     func authenticate(reason: String) async throws {

@@ -7,8 +7,6 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: targeted
-    DEVELOPMENT_TEAM: ""
-    CODE_SIGNING_ALLOWED: NO
     ENABLE_USER_SCRIPT_SANDBOXING: YES
 targets:
   FireballWebKit:
@@ -17,19 +15,31 @@ targets:
     sources:
       - App
       - Sources
-    resources:
-      - Resources
+      - path: Resources
+        buildPhase: resources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.fireball.webkit
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Fireball
-        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
-        INFOPLIST_KEY_NSFaceIDUsageDescription: Authenticate access to protected Fireball profiles.
+        PRODUCT_BUNDLE_IDENTIFIER: com.fireball.browser
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Config/Info.plist
+        FIREBALL_BLOCKER_MANIFEST_URL: https://lamppkk.github.io/fireball-webkit/blocker/manifest-v1.json
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SUPPORTS_MACCATALYST: NO
         TARGETED_DEVICE_FAMILY: "1,2"
+      configs:
+        Debug:
+          CODE_SIGNING_ALLOWED: NO
+          CODE_SIGN_ENTITLEMENTS: Config/FireballDebug.entitlements
+          FIREBALL_CLOUDKIT_ENABLED: NO
+          FIREBALL_BLOCKER_UPDATES_ENABLED: NO
+        Release:
+          CODE_SIGNING_ALLOWED: YES
+          CODE_SIGN_STYLE: Automatic
+          CODE_SIGN_ENTITLEMENTS: Config/FireballRelease.entitlements
+          FIREBALL_CLOUDKIT_ENABLED: YES
+          FIREBALL_BLOCKER_UPDATES_ENABLED: YES
   FireballWebKitTests:
     type: bundle.unit-test
     platform: iOS
@@ -39,8 +49,21 @@ targets:
       - target: FireballWebKit
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.fireball.webkit.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.fireball.browser.tests
         GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+  FireballWebKitUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - UITests
+    dependencies:
+      - target: FireballWebKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fireball.browser.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
 schemes:
   FireballWebKit:
     build:
@@ -50,3 +73,9 @@ schemes:
     test:
       targets:
         - FireballWebKitTests
+        - FireballWebKitUITests
+      environmentVariables:
+        FIREBALL_RULE_ARTIFACT_DIRECTORY: $(FIREBALL_RULE_ARTIFACT_DIRECTORY)
+        FIREBALL_BLOCKER_MANIFEST: $(FIREBALL_BLOCKER_MANIFEST)
+        FIREBALL_BLOCKER_ARTIFACT_DIRECTORY: $(FIREBALL_BLOCKER_ARTIFACT_DIRECTORY)
+        FIREBALL_BLOCKER_PUBLIC_KEY_BASE64: $(FIREBALL_BLOCKER_PUBLIC_KEY_BASE64)

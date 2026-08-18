@@ -9,8 +9,25 @@ final class URLPolicyTests: XCTestCase {
     func testBuildsEncodedSearchURL() throws {
         let url = try URLPolicy().resolve("private browser")
         XCTAssertEqual(url.scheme, "https")
-        XCTAssertEqual(url.host, "duckduckgo.com")
+        XCTAssertEqual(url.host, "search.brave.com")
         XCTAssertEqual(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first?.value, "private browser")
+    }
+
+    func testSearchProviderCanBeChangedPerProfile() throws {
+        let url = try URLPolicy(searchProvider: .duckDuckGo).resolve("private browser")
+        XCTAssertEqual(url.host, "duckduckgo.com")
+    }
+
+    func testExternalSchemesRequireConfirmation() throws {
+        let policy = URLPolicy()
+        XCTAssertEqual(
+            policy.disposition(for: try XCTUnwrap(URL(string: "mailto:security@example.com"))),
+            .externalConfirmation
+        )
+        XCTAssertEqual(
+            policy.disposition(for: try XCTUnwrap(URL(string: "tel:+15551212"))),
+            .externalConfirmation
+        )
     }
 
     func testRejectsScriptAndFileSchemes() {

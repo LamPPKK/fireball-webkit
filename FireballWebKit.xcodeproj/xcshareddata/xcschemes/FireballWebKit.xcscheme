@@ -41,7 +41,7 @@
       buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
-      shouldUseLaunchSchemeArgsEnv = "YES"
+      shouldUseLaunchSchemeArgsEnv = "NO"
       onlyGenerateCoverageForSpecifiedTargets = "NO">
       <MacroExpansion>
          <BuildableReference
@@ -64,9 +64,42 @@
                ReferencedContainer = "container:FireballWebKit.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "A8CD8EB302831C01369DE20B"
+               BuildableName = "FireballWebKitUITests.xctest"
+               BlueprintName = "FireballWebKitUITests"
+               ReferencedContainer = "container:FireballWebKit.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>
+      <EnvironmentVariables>
+         <EnvironmentVariable
+            key = "FIREBALL_BLOCKER_ARTIFACT_DIRECTORY"
+            value = "$(FIREBALL_BLOCKER_ARTIFACT_DIRECTORY)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "FIREBALL_BLOCKER_MANIFEST"
+            value = "$(FIREBALL_BLOCKER_MANIFEST)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "FIREBALL_BLOCKER_PUBLIC_KEY_BASE64"
+            value = "$(FIREBALL_BLOCKER_PUBLIC_KEY_BASE64)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "FIREBALL_RULE_ARTIFACT_DIRECTORY"
+            value = "$(FIREBALL_RULE_ARTIFACT_DIRECTORY)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+      </EnvironmentVariables>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"

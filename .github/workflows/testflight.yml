@@ -16,10 +16,13 @@ jobs:
       - name: Enforce release preconditions
         env:
           CLOUDKIT_SCHEMA_PROMOTED: ${{ vars.CLOUDKIT_SCHEMA_PROMOTED }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
           BLOCKER_PUBLIC_KEY_BASE64: ${{ secrets.BLOCKER_PUBLIC_KEY_BASE64 }}
         run: |
-          test "$CLOUDKIT_SCHEMA_PROMOTED" = "true"
-          test -n "$BLOCKER_PUBLIC_KEY_BASE64"
+          python3 Tools/release_preflight.py
           printf '%s\n' "$BLOCKER_PUBLIC_KEY_BASE64" > Resources/blocker-public-key.txt
       - name: Configure App Store Connect key
         env:
@@ -30,6 +33,8 @@ jobs:
           printf '%s' "$ASC_PRIVATE_KEY" > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
           chmod 600 "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
       - run: xcodegen generate
+      - name: Test release tooling
+        run: python3 -m unittest discover -s Tools/tests
       - name: Archive once
         env:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
@@ -61,13 +66,19 @@ jobs:
             -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-      - name: Validate exact IPA
+      - name: Test and validate exact IPA
         env:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
         run: |
           ipa="$(find "$RUNNER_TEMP/export" -maxdepth 1 -name '*.ipa' -print -quit)"
           test -n "$ipa"
+          python3 Tools/verify_ipa.py \
+            --ipa "$ipa" \
+            --bundle-id com.fireball.browser \
+            --version 0.1.0 \
+            --build "${{ github.run_number }}"
+          shasum -a 256 "$ipa" > "$RUNNER_TEMP/FireballWebKit.ipa.sha256"
           xcrun altool --validate-app -f "$ipa" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
       - name: Upload exact validated IPA
         env:
@@ -75,6 +86,7 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
         run: |
           ipa="$(find "$RUNNER_TEMP/export" -maxdepth 1 -name '*.ipa' -print -quit)"
+          shasum -a 256 --check "$RUNNER_TEMP/FireballWebKit.ipa.sha256"
           xcrun altool --upload-app -f "$ipa" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
       - uses: actions/upload-artifact@v4
         with:
@@ -82,4 +94,10 @@ jobs:
           path: |
             ${{ runner.temp }}/FireballWebKit.xcarchive
             ${{ runner.temp }}/export/*.ipa
+            ${{ runner.temp }}/FireballWebKit.ipa.sha256
           retention-days: 14
+      - name: Remove App Store Connect key
+        if: always()
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+        run: rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"

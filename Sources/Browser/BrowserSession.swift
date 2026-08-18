@@ -5,7 +5,7 @@ import WebKit
 @Observable
 final class BrowserSession {
     let tabID: TabID
-    let profile: BrowserProfile
+    private(set) var profile: BrowserProfile
     let webView: WKWebView
     var currentURL: URL?
     var pageTitle: String?
@@ -18,6 +18,7 @@ final class BrowserSession {
     @ObservationIgnored var onNavigationFinished: ((BrowserSession) -> Void)?
     @ObservationIgnored var onOpenNewTab: ((URL) -> Void)?
     @ObservationIgnored var onExternalURL: ((URL) -> Void)?
+    @ObservationIgnored private var pendingContentRules: [WKContentRuleList]?
 
     init(
         tabID: TabID,
@@ -41,16 +42,47 @@ final class BrowserSession {
         webView.allowsBackForwardNavigationGestures = true
     }
 
+    var hasPendingPolicyChange: Bool {
+        pendingContentRules != nil
+    }
+
+    func stagePolicy(profile: BrowserProfile, contentRules: [WKContentRuleList]) {
+        guard profile.id == self.profile.id else { return }
+        self.profile = profile
+        pendingContentRules = profile.blockerEnabled ? contentRules : []
+    }
+
+    func applyPendingPolicy() {
+        guard let pendingContentRules else { return }
+        webView.configuration.userContentController.removeAllContentRuleLists()
+        for rule in pendingContentRules {
+            webView.configuration.userContentController.add(rule)
+        }
+        self.pendingContentRules = nil
+    }
+
     func load(_ url: URL) {
+        applyPendingPolicy()
         let policy: URLRequest.CachePolicy = profile.storageMode == .ephemeral
             ? .reloadIgnoringLocalCacheData
             : .useProtocolCachePolicy
         webView.load(URLRequest(url: url, cachePolicy: policy))
     }
 
-    func goBack() { webView.goBack() }
-    func goForward() { webView.goForward() }
-    func reload() { webView.reload() }
+    func goBack() {
+        applyPendingPolicy()
+        webView.goBack()
+    }
+
+    func goForward() {
+        applyPendingPolicy()
+        webView.goForward()
+    }
+
+    func reload() {
+        applyPendingPolicy()
+        webView.reload()
+    }
     func stopLoading() { webView.stopLoading() }
 
     func synchronize() {

@@ -2,6 +2,7 @@ import Foundation
 
 enum BrowserSyncStatus: Equatable, Sendable {
     case starting
+    case syncing
     case localOnly
     case available
     case degraded(String)
@@ -9,9 +10,20 @@ enum BrowserSyncStatus: Equatable, Sendable {
     var label: String {
         switch self {
         case .starting: "SYNC STARTING"
+        case .syncing: "SYNCING"
         case .localOnly: "LOCAL ONLY"
         case .available: "ICLOUD READY"
         case .degraded: "SYNC DEGRADED"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .starting: "Checking iCloud availability. Browsing uses the local replica meanwhile."
+        case .syncing: "Exchanging browser metadata with the private iCloud database."
+        case .localOnly: "iCloud sync is disabled for this build. Browsing data remains local."
+        case .available: "The local replica is ready to synchronize regular browser metadata."
+        case let .degraded(message): message
         }
     }
 }
@@ -20,6 +32,7 @@ enum BrowserSyncStatus: Equatable, Sendable {
 protocol BrowserRepository: AnyObject {
     var syncStatus: BrowserSyncStatus { get }
     var onExternalChange: (@MainActor @Sendable () -> Void)? { get set }
+    var onSyncStatusChange: (@MainActor @Sendable (BrowserSyncStatus) -> Void)? { get set }
     func load() async throws -> BrowserSnapshot
     func save(_ snapshot: BrowserSnapshot) throws
 }
@@ -27,8 +40,9 @@ protocol BrowserRepository: AnyObject {
 @MainActor
 final class InMemoryBrowserRepository: BrowserRepository {
     private var snapshot: BrowserSnapshot
-    let syncStatus: BrowserSyncStatus
+    private(set) var syncStatus: BrowserSyncStatus
     var onExternalChange: (@MainActor @Sendable () -> Void)?
+    var onSyncStatusChange: (@MainActor @Sendable (BrowserSyncStatus) -> Void)?
 
     init(snapshot: BrowserSnapshot = .initial(), syncStatus: BrowserSyncStatus = .localOnly) {
         self.snapshot = snapshot
@@ -41,5 +55,10 @@ final class InMemoryBrowserRepository: BrowserRepository {
 
     func save(_ snapshot: BrowserSnapshot) throws {
         self.snapshot = snapshot
+    }
+
+    func updateSyncStatus(_ status: BrowserSyncStatus) {
+        syncStatus = status
+        onSyncStatusChange?(status)
     }
 }

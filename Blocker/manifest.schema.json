@@ -12,7 +12,7 @@
       "required": ["schemaVersion", "version", "sourceCommits", "artifacts", "minimumAppVersion", "createdAt"],
       "properties": {
         "schemaVersion": { "const": 1 },
-        "version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "version": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[0-9]+(?:\\.[0-9]+)+$" },
         "sourceCommits": {
           "type": "object",
           "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{40}$" }

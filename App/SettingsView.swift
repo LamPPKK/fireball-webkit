@@ -93,6 +93,9 @@ struct SettingsView: View {
     private var syncSection: some View {
         Section("iCloud private database") {
             LabeledContent("Status", value: store.syncStatus.label)
+            Text(store.syncStatus.detail)
+                .font(.caption)
+                .foregroundStyle(Color.fireballMuted)
             Button(store.settings.historySyncEnabled ? "Disable history sync" : "Enable history sync") {
                 if store.settings.historySyncEnabled {
                     store.setHistorySyncEnabled(false)

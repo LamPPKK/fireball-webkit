@@ -98,6 +98,9 @@ final class BrowserStore {
                 await self?.mergeExternalChanges()
             }
         }
+        repository.onSyncStatusChange = { [weak self] status in
+            self?.syncStatus = status
+        }
         do {
             let snapshot = try await repository.load()
             profiles = snapshot.profiles
@@ -154,6 +157,7 @@ final class BrowserStore {
             selectedSpaceID = space.id
             selectedTabID = tab.id
             setSelectedTab(tab.id, in: space.id)
+            rememberSelectedRegularSpace(space.id)
         }
         tryPersist()
         if url != nil {
@@ -167,6 +171,7 @@ final class BrowserStore {
         selectedSpaceID = tab.spaceID
         selectedTabID = tab.id
         setSelectedTab(tab.id, in: tab.spaceID)
+        rememberSelectedRegularSpace(tab.spaceID)
         if let index = tabs.firstIndex(where: { $0.id == tab.id }) {
             tabs[index].lastActiveAt = .now
             tabs[index].modifiedAt = .now
@@ -209,6 +214,7 @@ final class BrowserStore {
         )
         spaces.append(space)
         selectedSpaceID = space.id
+        rememberSelectedRegularSpace(space.id)
         _ = createTab(in: space.id)
         tryPersist()
     }
@@ -238,6 +244,8 @@ final class BrowserStore {
         if selectedTabID == nil {
             _ = createTab(in: space.id)
         }
+        rememberSelectedRegularSpace(space.id)
+        tryPersist()
         await unlockActiveProfileIfNeeded()
     }
 
@@ -330,7 +338,7 @@ final class BrowserStore {
         guard let index = profiles.firstIndex(where: { $0.id == profileID }) else { return }
         profiles[index].searchProvider = provider
         profiles[index].modifiedAt = .now
-        resetSessions(for: profileID)
+        stagePolicyChange(for: profileID)
         tryPersist()
     }
 
@@ -338,7 +346,7 @@ final class BrowserStore {
         guard let index = profiles.firstIndex(where: { $0.id == profileID }) else { return }
         profiles[index].blockerEnabled = enabled
         profiles[index].modifiedAt = .now
-        resetSessions(for: profileID)
+        stagePolicyChange(for: profileID)
         tryPersist()
     }
 
@@ -411,9 +419,24 @@ final class BrowserStore {
     }
 
     func releaseBackgroundSessions() {
+        trimBackgroundSessions(keepingMostRecent: 0)
+    }
+
+    @discardableResult
+    func trimBackgroundSessions(keepingMostRecent retainedCount: Int) -> [TabID] {
         let activeID = selectedTabID
-        let backgroundIDs = sessions.keys.filter { $0 != activeID }
-        for tabID in backgroundIDs {
+        let loadedBackgroundTabs = tabs
+            .filter { $0.id != activeID && sessions[$0.id] != nil }
+            .sorted { lhs, rhs in
+                if lhs.lastActiveAt == rhs.lastActiveAt {
+                    return lhs.id.rawValue.uuidString < rhs.id.rawValue.uuidString
+                }
+                return lhs.lastActiveAt > rhs.lastActiveAt
+            }
+        let evictedIDs = loadedBackgroundTabs
+            .dropFirst(max(0, retainedCount))
+            .map(\.id)
+        for tabID in evictedIDs {
             guard let session = sessions[tabID] else { continue }
             let configuration = WKSnapshotConfiguration()
             configuration.afterScreenUpdates = false
@@ -425,20 +448,23 @@ final class BrowserStore {
             session.webView.stopLoading()
             sessions.removeValue(forKey: tabID)
         }
+        return evictedIDs
     }
 
     func thumbnail(for tabID: TabID) -> UIImage? {
         thumbnails[tabID]
     }
 
+    func isSessionLoaded(for tabID: TabID) -> Bool {
+        sessions[tabID] != nil
+    }
+
     func applyUpdatedContentRules(_ rules: [WKContentRuleList], status: String) {
         contentRules = rules
         blockerStatus = status
-        for session in sessions.values where session.profile.blockerEnabled {
-            session.webView.configuration.userContentController.removeAllContentRuleLists()
-            for rule in rules {
-                session.webView.configuration.userContentController.add(rule)
-            }
+        for session in sessions.values {
+            guard let profile = profiles.first(where: { $0.id == session.profile.id }) else { continue }
+            session.stagePolicy(profile: profile, contentRules: rules)
         }
     }
 
@@ -590,9 +616,12 @@ final class BrowserStore {
             return
         }
         if selectedSpaceID == nil || !spaces.contains(where: { $0.id == selectedSpaceID }) {
-            selectedSpaceID = sorted(spaces).first?.id
+            selectedSpaceID = settings.lastSelectedSpaceID
+                .flatMap { remembered in spaces.first(where: { $0.id == remembered && $0.storageMode == .persistent })?.id }
+                ?? sorted(spaces).first?.id
         }
         guard let space = selectedSpace else { return }
+        rememberSelectedRegularSpace(space.id)
         selectedTabID = space.selectedTabID
             ?? sorted(tabs.filter { $0.spaceID == space.id }).last?.id
         if selectedTabID == nil {
@@ -607,14 +636,18 @@ final class BrowserStore {
         dataStores.removeEphemeralStore(for: space.profileID)
         selectedSpaceID = sorted(spaces).first?.id
         selectedTabID = selectedSpace?.selectedTabID
+        if let selectedSpaceID {
+            rememberSelectedRegularSpace(selectedSpaceID)
+        }
         ensureSelectionAndTab()
     }
 
-    private func resetSessions(for profileID: ProfileID) {
+    private func stagePolicyChange(for profileID: ProfileID) {
+        guard let profile = profiles.first(where: { $0.id == profileID }) else { return }
         let affectedSpaces = Set(spaces.filter { $0.profileID == profileID }.map(\.id))
         let affectedTabs = tabs.filter { affectedSpaces.contains($0.spaceID) }
         for tab in affectedTabs {
-            sessions.removeValue(forKey: tab.id)?.webView.stopLoading()
+            sessions[tab.id]?.stagePolicy(profile: profile, contentRules: contentRules)
         }
     }
 
@@ -671,5 +704,13 @@ final class BrowserStore {
     private func normalizedName(_ name: String, fallback: String) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         return String((trimmed.isEmpty ? fallback : trimmed).prefix(48))
+    }
+
+    private func rememberSelectedRegularSpace(_ spaceID: SpaceID) {
+        guard let space = spaces.first(where: { $0.id == spaceID }),
+              space.storageMode == .persistent,
+              settings.lastSelectedSpaceID != spaceID else { return }
+        settings.lastSelectedSpaceID = spaceID
+        settings.modifiedAt = .now
     }
 }

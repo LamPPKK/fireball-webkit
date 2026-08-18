@@ -1,8 +1,21 @@
+import CloudKit
 import XCTest
 @testable import FireballWebKit
 
 @MainActor
 final class BrowserPersistenceTests: XCTestCase {
+    func testCloudAccountStatusAlwaysKeepsBrowsingAvailableLocally() {
+        XCTAssertEqual(CoreDataBrowserRepository.syncStatus(for: .available), .available)
+        XCTAssertEqual(
+            CoreDataBrowserRepository.syncStatus(for: .noAccount),
+            .degraded("Sign in to iCloud to synchronize metadata. Browsing continues locally.")
+        )
+        XCTAssertEqual(
+            CoreDataBrowserRepository.syncStatus(for: .temporarilyUnavailable),
+            .degraded("iCloud is temporarily unavailable. Browsing continues locally.")
+        )
+    }
+
     func testPrivateObjectsNeverEnterPersistentSnapshot() async throws {
         let repository = CoreDataBrowserRepository(inMemory: true, cloudKitEnabled: false)
         var snapshot = try await repository.load()

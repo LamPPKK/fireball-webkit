@@ -3,6 +3,7 @@
 import argparse
 import base64
 import json
+import re
 import subprocess
 import tempfile
 from datetime import datetime, timezone
@@ -14,6 +15,10 @@ def canonical(payload):
 
 
 def create(index_path: Path, base_url: str, version: str, minimum_app_version: str, private_key: Path):
+    if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)+", version, flags=re.ASCII):
+        raise ValueError("version must contain two or more dot-separated numeric components")
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", minimum_app_version, flags=re.ASCII):
+        raise ValueError("minimum app version must be major.minor.patch")
     index = json.loads(index_path.read_text())
     payload = {
         "artifacts": [

@@ -70,10 +70,54 @@ final class BlockerManifestTests: XCTestCase {
         }
     }
 
-    private func payload(for artifact: Data) -> BlockerManifestPayload {
+    func testSignedOlderManifestCannotReplaceInstalledRules() async throws {
+        let trustedKey = Curve25519.Signing.PrivateKey()
+        let artifact = Data("[]".utf8)
+        let oldPayload = payload(for: artifact, version: "2026.08.18.9")
+        let manifest = BlockerManifest(
+            payload: oldPayload,
+            signature: try trustedKey.signature(for: oldPayload.canonicalData()).base64EncodedString()
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let manifestURL = URL(string: "https://updates.example/manifest.json")!
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "BlockerManifestTests.\(UUID())"))
+        defaults.set("2026.08.19.1", forKey: "blocker.activeVersion")
+        let updater = BlockerUpdateService(
+            compiler: RejectingRuleCompiler(),
+            httpClient: StaticBlockerHTTPClient(responses: [manifestURL: try encoder.encode(manifest)]),
+            verifier: try BlockerVerifier(rawPublicKey: trustedKey.publicKey.rawRepresentation),
+            defaults: defaults,
+            appVersion: "0.1.0"
+        )
+
+        do {
+            _ = try await updater.update(from: manifestURL, force: true)
+            XCTFail("Expected rollback rejection")
+        } catch {
+            XCTAssertEqual(error as? ContentRuleError, .rollbackRejected)
+        }
+    }
+
+    func testManifestRejectsNonNumericRulesVersion() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let artifact = Data("[]".utf8)
+        let malformedPayload = payload(for: artifact, version: "release-latest")
+        let manifest = BlockerManifest(
+            payload: malformedPayload,
+            signature: try privateKey.signature(for: malformedPayload.canonicalData()).base64EncodedString()
+        )
+        let verifier = try BlockerVerifier(rawPublicKey: privateKey.publicKey.rawRepresentation)
+
+        XCTAssertThrowsError(try verifier.verifyManifest(manifest, appVersion: "0.1.0")) { error in
+            XCTAssertEqual(error as? ContentRuleError, .invalidManifestMetadata)
+        }
+    }
+
+    private func payload(for artifact: Data, version: String = "2026.08.19.1") -> BlockerManifestPayload {
         BlockerManifestPayload(
             schemaVersion: 1,
-            version: "2026.08.19.1",
+            version: version,
             sourceCommits: ["easylist": String(repeating: "a", count: 40)],
             artifacts: [
                 BlockerArtifact(

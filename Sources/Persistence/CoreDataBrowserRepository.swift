@@ -1,3 +1,4 @@
+import CloudKit
 import CoreData
 import Foundation
 
@@ -29,14 +30,21 @@ final class CoreDataBrowserRepository: BrowserRepository {
 
     private let container: NSPersistentCloudKitContainer
     private let cloudKitEnabled: Bool
+    private let accountContainer: CKContainer?
     private var didLoadStores = false
-    private var remoteChangeObserver: NSObjectProtocol?
+    private var remoteChangeObserver: NotificationObserverToken?
+    private var cloudEventObserver: NotificationObserverToken?
+    private var accountChangeObserver: NotificationObserverToken?
 
     private(set) var syncStatus: BrowserSyncStatus = .starting
     var onExternalChange: (@MainActor @Sendable () -> Void)?
+    var onSyncStatusChange: (@MainActor @Sendable (BrowserSyncStatus) -> Void)?
 
     init(inMemory: Bool = false, cloudKitEnabled: Bool = true) {
         self.cloudKitEnabled = cloudKitEnabled && !inMemory
+        accountContainer = self.cloudKitEnabled
+            ? CKContainer(identifier: Self.cloudContainerIdentifier)
+            : nil
         container = NSPersistentCloudKitContainer(
             name: "FireballBrowser",
             managedObjectModel: Self.makeManagedObjectModel()
@@ -158,9 +166,20 @@ final class CoreDataBrowserRepository: BrowserRepository {
             }
         }
         didLoadStores = true
-        syncStatus = cloudKitEnabled ? .available : .localOnly
-        if cloudKitEnabled, remoteChangeObserver == nil {
-            remoteChangeObserver = NotificationCenter.default.addObserver(
+        if cloudKitEnabled {
+            publishSyncStatus(.starting)
+            startCloudMonitoring()
+            Task { @MainActor [weak self] in
+                await self?.refreshCloudAccountStatus()
+            }
+        } else {
+            publishSyncStatus(.localOnly)
+        }
+    }
+
+    private func startCloudMonitoring() {
+        if remoteChangeObserver == nil {
+            remoteChangeObserver = NotificationObserverToken(NotificationCenter.default.addObserver(
                 forName: .NSPersistentStoreRemoteChange,
                 object: container.persistentStoreCoordinator,
                 queue: .main
@@ -168,7 +187,79 @@ final class CoreDataBrowserRepository: BrowserRepository {
                 Task { @MainActor [weak self] in
                     self?.onExternalChange?()
                 }
-            }
+            })
+        }
+        if cloudEventObserver == nil {
+            cloudEventObserver = NotificationObserverToken(NotificationCenter.default.addObserver(
+                forName: NSPersistentCloudKitContainer.eventChangedNotification,
+                object: container,
+                queue: .main
+            ) { [weak self] notification in
+                guard let event = notification.userInfo?[NSPersistentCloudKitContainer.eventNotificationUserInfoKey]
+                    as? NSPersistentCloudKitContainer.Event else { return }
+                let hasEnded = event.endDate != nil
+                let succeeded = event.succeeded
+                MainActor.assumeIsolated {
+                    self?.handleCloudEvent(hasEnded: hasEnded, succeeded: succeeded)
+                }
+            })
+        }
+        if accountChangeObserver == nil {
+            accountChangeObserver = NotificationObserverToken(NotificationCenter.default.addObserver(
+                forName: .CKAccountChanged,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    await self?.refreshCloudAccountStatus()
+                }
+            })
+        }
+    }
+
+    private func handleCloudEvent(hasEnded: Bool, succeeded: Bool) {
+        guard hasEnded else {
+            publishSyncStatus(.syncing)
+            return
+        }
+        if succeeded {
+            publishSyncStatus(.available)
+        } else {
+            publishSyncStatus(.degraded("iCloud synchronization failed. Browsing continues with the local replica."))
+        }
+    }
+
+    private func refreshCloudAccountStatus() async {
+        guard let accountContainer else {
+            publishSyncStatus(.localOnly)
+            return
+        }
+        do {
+            publishSyncStatus(Self.syncStatus(for: try await accountContainer.accountStatus()))
+        } catch {
+            publishSyncStatus(.degraded("Fireball could not determine iCloud availability. Browsing continues locally."))
+        }
+    }
+
+    private func publishSyncStatus(_ status: BrowserSyncStatus) {
+        syncStatus = status
+        onSyncStatusChange?(status)
+    }
+
+    static func syncStatus(for accountStatus: CKAccountStatus) -> BrowserSyncStatus {
+        switch accountStatus {
+        case .available:
+            .available
+        case .noAccount:
+            .degraded("Sign in to iCloud to synchronize metadata. Browsing continues locally.")
+        case .restricted:
+            .degraded("This device restricts iCloud access. Browsing continues locally.")
+        case .temporarilyUnavailable:
+            .degraded("iCloud is temporarily unavailable. Browsing continues locally.")
+        case .couldNotDetermine:
+            .degraded("Fireball could not determine iCloud availability. Browsing continues locally.")
+        @unknown default:
+            .degraded("iCloud status is unknown. Browsing continues locally.")
         }
     }
 
@@ -345,6 +436,18 @@ final class CoreDataBrowserRepository: BrowserRepository {
         attribute.defaultValue = defaultValue
         attribute.isOptional = optional
         return attribute
+    }
+}
+
+private final class NotificationObserverToken: @unchecked Sendable {
+    private let token: NSObjectProtocol
+
+    init(_ token: NSObjectProtocol) {
+        self.token = token
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(token)
     }
 }
 

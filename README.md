@@ -58,3 +58,5 @@ The `testflight` GitHub environment requires:
 Build numbers use the GitHub Actions run number. CI archives once, exports and validates that archive, then uploads the exact IPA without rebuilding.
 
 External TestFlight acceptance, two-device iCloud validation, physical-device accessibility checks and Apple Beta App Review remain external release gates. Fireball Blink must not begin until those gates pass. XanhTab and fireball-docker remain frozen and are not modified by this roadmap.
+
+Use the [external TestFlight gate checklist](Release/TESTFLIGHT.md) to record physical-device and App Review evidence for the exact uploaded IPA.

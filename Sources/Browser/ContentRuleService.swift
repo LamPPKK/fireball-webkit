@@ -90,10 +90,9 @@ struct BlockerVerifier: Sendable {
         guard manifest.payload.artifacts.allSatisfy({ $0.url.scheme == "https" }) else {
             throw ContentRuleError.insecureArtifactURL
         }
-        guard !manifest.payload.version.isEmpty, manifest.payload.version.count <= 64,
-              manifest.payload.version.rangeOfCharacter(
-                  from: CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-").inverted
-              ) == nil,
+        guard Self.isNumericVersion(manifest.payload.version, minimumComponents: 2),
+              manifest.payload.version.count <= 64,
+              Self.isNumericVersion(manifest.payload.minimumAppVersion, exactComponents: 3),
               manifest.payload.sourceCommits.values.allSatisfy({
                   $0.count == 40 && $0.rangeOfCharacter(from: CharacterSet(charactersIn: "0123456789abcdef").inverted) == nil
               }) else {
@@ -108,6 +107,19 @@ struct BlockerVerifier: Sendable {
         guard let signature = Data(base64Encoded: manifest.signature),
               publicKey.isValidSignature(signature, for: try manifest.payload.canonicalData()) else {
             throw ContentRuleError.signatureInvalid
+        }
+    }
+
+    private static func isNumericVersion(
+        _ version: String,
+        minimumComponents: Int? = nil,
+        exactComponents: Int? = nil
+    ) -> Bool {
+        let components = version.split(separator: ".", omittingEmptySubsequences: false)
+        if let minimumComponents, components.count < minimumComponents { return false }
+        if let exactComponents, components.count != exactComponents { return false }
+        return !components.isEmpty && components.allSatisfy { component in
+            !component.isEmpty && component.utf8.allSatisfy { 48 ... 57 ~= $0 }
         }
     }
 
@@ -212,9 +224,15 @@ final class BlockerUpdateService {
         let manifest = try decoder.decode(BlockerManifest.self, from: manifestData)
         try verifier.verifyManifest(manifest, appVersion: appVersion)
 
-        if defaults.string(forKey: Self.activeVersionKey) == manifest.payload.version {
-            defaults.set(now, forKey: Self.lastCheckKey)
-            return .unchanged
+        if let activeVersion = defaults.string(forKey: Self.activeVersionKey) {
+            let ordering = manifest.payload.version.compare(activeVersion, options: .numeric)
+            guard ordering != .orderedAscending else {
+                throw ContentRuleError.rollbackRejected
+            }
+            if ordering == .orderedSame {
+                defaults.set(now, forKey: Self.lastCheckKey)
+                return .unchanged
+            }
         }
 
         var downloaded: [URL: Data] = [:]
@@ -259,6 +277,7 @@ enum ContentRuleError: LocalizedError, Equatable {
     case invalidArtifactList
     case invalidManifestMetadata
     case downloadTooLarge
+    case rollbackRejected
 
     var errorDescription: String? {
         switch self {
@@ -275,6 +294,7 @@ enum ContentRuleError: LocalizedError, Equatable {
         case .invalidArtifactList: "The blocker manifest artifact list is empty or contains duplicate identifiers."
         case .invalidManifestMetadata: "The blocker manifest metadata is malformed."
         case .downloadTooLarge: "The blocker download exceeded its size limit."
+        case .rollbackRejected: "The blocker update is older than the installed rules."
         }
     }
 }

@@ -279,7 +279,7 @@ struct BrowserShellView: View {
     private var syncColor: Color {
         switch store.syncStatus {
         case .available: .fireballGreen
-        case .starting: .yellow
+        case .starting, .syncing: .yellow
         case .localOnly: .fireballMuted
         case .degraded: .fireballOrange
         }

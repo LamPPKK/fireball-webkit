@@ -1,0 +1,53 @@
+# External TestFlight gate
+
+Fireball WebKit does not unlock Blink development until every required row below has evidence from the exact uploaded `0.1.0` IPA. A local or CI simulator pass is not a substitute for Apple Beta App Review or physical-device checks.
+
+## One-time Apple setup
+
+- Register `com.fireball.browser`. Stop if Apple does not accept that exact identifier.
+- Register `iCloud.com.fireball.browser` and enable CloudKit plus remote notifications.
+- Create the App Store Connect app record and an API key with permission to upload builds.
+- Exercise the CloudKit development schema, then promote that schema to production.
+- Add the five protected secrets named in `README.md` to the `testflight` GitHub environment.
+- Set `CLOUDKIT_SCHEMA_PROMOTED=true` only after promotion is complete.
+
+The GitHub environment accepts deployments only from `main` and requires a manual review from `LamPPKK`. The workflow validates every release input before archiving and will not invent a fallback bundle identifier.
+
+## Artifact chain
+
+For each candidate, retain:
+
+- Git commit and TestFlight workflow run URL.
+- GitHub Actions build number.
+- SHA-256 file emitted beside the IPA.
+- `altool` validation and upload result.
+- App Store Connect processing result and TestFlight build identifier.
+
+The workflow archives once, exports once, verifies bundle/version/build metadata, checks the privacy manifest and blocker public key, records the IPA checksum, and uploads that same file.
+
+## Required device evidence
+
+Record pass/fail, device model, OS version, build number, tester, and evidence link for every row.
+
+| Test | Required result |
+| --- | --- |
+| iPhone install/launch | Installs from TestFlight and reaches native home on iOS 18+ |
+| iPad install/launch | Installs from TestFlight and adaptive sidebar/grid is usable on iPadOS 18+ |
+| Two-device iCloud | Regular profiles, spaces, tabs, bookmarks, and settings converge |
+| Cookie boundary | Website cookies do not appear in another profile or another device through Fireball sync |
+| Private boundary | Private tabs, history, snapshots, and restore state do not appear after relaunch or on device two |
+| History opt-in | URL sync starts only after the disclosure is accepted; records older than 90 days disappear |
+| Offline/reconnect | Browsing remains usable on the local replica and sync later recovers |
+| iCloud account change | Browser remains usable and clearly reports degraded/local sync state |
+| IPv6-only | Search, navigation, blocker update, and CloudKit sync remain functional |
+| Memory pressure | Active tab survives; least-recent background WebViews restore on activation |
+| Biometric cancellation | Protected profile remains locked |
+| Biometric-set change | Protected profile fails closed and device-owner recovery works |
+| 100-cycle stability | 100 navigation, new-tab, switch, and close cycles produce no reproducible crash or data loss |
+| VoiceOver | Browser controls, tab cards, spaces, privacy state, and destructive actions are named and ordered |
+| Dynamic Type | Core controls remain reachable at accessibility sizes |
+| Hardware keyboard | Omnibox, navigation, tab grid, and settings can be reached without touch |
+
+## Go/no-go
+
+The gate passes only after Apple Beta App Review accepts the build, every device row passes, and there is no open P0/P1 issue, reproducible data loss, or reproducible crash. Until then, keep `fireball-blink`, XanhTab, and `fireball-docker` frozen except for urgent security fixes.

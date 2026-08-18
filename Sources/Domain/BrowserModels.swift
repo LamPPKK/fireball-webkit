@@ -160,6 +160,7 @@ struct HistoryVisit: Identifiable, Hashable, Codable, Sendable {
 
 struct BrowserSettings: Hashable, Codable, Sendable {
     var historySyncEnabled = false
+    var lastSelectedSpaceID: SpaceID?
     var modifiedAt = Date.now
 }
 

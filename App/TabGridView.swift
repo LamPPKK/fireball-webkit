@@ -134,64 +134,18 @@ struct TabGridView: View {
     }
 
     private func tabCard(_ tab: BrowserTab) -> some View {
-        ZStack(alignment: .topTrailing) {
-            Button {
+        SwipeClosableTabCard(
+            tab: tab,
+            thumbnail: store.thumbnail(for: tab.id),
+            isSelected: store.selectedTabID == tab.id,
+            onOpen: {
                 store.activateTab(tab.id)
                 isPresented = false
-            } label: {
-                VStack(alignment: .leading, spacing: 0) {
-                    ZStack {
-                        Color.fireballRaised
-                        if let image = store.thumbnail(for: tab.id) {
-                            Image(uiImage: image)
-                                .resizable()
-                                .scaledToFill()
-                                .clipped()
-                        } else {
-                            VStack(spacing: 8) {
-                                Image(systemName: tab.isPrivate ? "eye.slash" : "globe")
-                                    .font(.system(size: 25, weight: .light))
-                                    .foregroundStyle(tab.isPrivate ? Color.fireballOrange : Color.fireballGreen)
-                                Text(tab.url?.host() ?? "HOME")
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(Color.fireballMuted)
-                            }
-                        }
-                    }
-                    .frame(height: 118)
-
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(tab.title)
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            .lineLimit(1)
-                        Text(tab.url?.absoluteString ?? "Fireball home")
-                            .font(.caption2)
-                            .foregroundStyle(Color.fireballMuted)
-                            .lineLimit(1)
-                    }
-                    .padding(12)
-                }
-                .background(Color.fireballPanel)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(store.selectedTabID == tab.id ? Color.fireballGreen : Color.white.opacity(0.1), lineWidth: 1)
-                }
-            }
-            .buttonStyle(.plain)
-
-            Button {
+            },
+            onClose: {
                 store.closeTab(tab.id)
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .frame(width: 44, height: 44)
-                    .background(.black.opacity(0.58), in: Circle())
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Close \(tab.title)")
-            .padding(4)
-        }
+        )
     }
 
     private var newTabCard: some View {
@@ -217,5 +171,106 @@ struct TabGridView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("New tab")
         .accessibilityIdentifier("tabs.new")
+    }
+}
+
+private struct SwipeClosableTabCard: View {
+    let tab: BrowserTab
+    let thumbnail: UIImage?
+    let isSelected: Bool
+    let onOpen: () -> Void
+    let onClose: () -> Void
+
+    @State private var dragOffset = 0.0
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.fireballOrange.opacity(0.9))
+                .overlay(alignment: .trailing) {
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(Color.fireballBackground)
+                        .padding(.trailing, 24)
+                }
+
+            ZStack(alignment: .topTrailing) {
+                Button(action: onOpen) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ZStack {
+                            Color.fireballRaised
+                            if let thumbnail {
+                                Image(uiImage: thumbnail)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .clipped()
+                            } else {
+                                VStack(spacing: 8) {
+                                    Image(systemName: tab.isPrivate ? "eye.slash" : "globe")
+                                        .font(.system(size: 25, weight: .light))
+                                        .foregroundStyle(tab.isPrivate ? Color.fireballOrange : Color.fireballGreen)
+                                    Text(tab.url?.host() ?? "HOME")
+                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(Color.fireballMuted)
+                                }
+                            }
+                        }
+                        .frame(height: 118)
+
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(tab.title)
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .lineLimit(1)
+                            Text(tab.url?.absoluteString ?? "Fireball home")
+                                .font(.caption2)
+                                .foregroundStyle(Color.fireballMuted)
+                                .lineLimit(1)
+                        }
+                        .padding(12)
+                    }
+                    .background(Color.fireballPanel)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(isSelected ? Color.fireballGreen : Color.white.opacity(0.1), lineWidth: 1)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(tab.title), \(tab.url?.host() ?? "Fireball home")")
+                .accessibilityHint("Double-tap to open. Swipe left to close.")
+                .accessibilityIdentifier("tab.card")
+                .accessibilityAction(named: "Close tab") { onClose() }
+
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .frame(width: 44, height: 44)
+                        .background(.black.opacity(0.58), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close \(tab.title)")
+                .accessibilityIdentifier("tab.close")
+                .padding(4)
+            }
+            .offset(x: dragOffset)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .contentShape(Rectangle())
+        .highPriorityGesture(
+            DragGesture(minimumDistance: 16)
+                .onChanged { value in
+                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                    dragOffset = min(0, max(-120, value.translation.width))
+                }
+                .onEnded { value in
+                    let shouldClose = value.translation.width < -72 || value.predictedEndTranslation.width < -120
+                    if shouldClose {
+                        withAnimation(.easeIn(duration: 0.16)) { dragOffset = -320 }
+                        onClose()
+                    } else {
+                        withAnimation(.snappy(duration: 0.22)) { dragOffset = 0 }
+                    }
+                }
+        )
     }
 }

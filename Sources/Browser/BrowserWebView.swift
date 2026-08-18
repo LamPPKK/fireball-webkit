@@ -55,6 +55,7 @@ struct BrowserWebView: UIViewRepresentable {
             switch URLPolicy(searchProvider: session.profile.searchProvider)
                 .disposition(for: navigationAction.request.url) {
             case .web:
+                session.applyPendingPolicy()
                 return .allow
             case .externalConfirmation:
                 if let url = navigationAction.request.url {

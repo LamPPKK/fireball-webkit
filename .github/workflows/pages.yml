@@ -38,6 +38,8 @@ jobs:
             gh release download "$tag" --dir site/blocker --pattern 'manifest-v1.json' --pattern 'conversion-report.json'
           fi
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

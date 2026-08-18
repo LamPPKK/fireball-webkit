@@ -30,7 +30,10 @@ jobs:
           mkdir -p site/blocker
           cp -R docs/. site/
           cp Blocker/manifest.schema.json site/blocker-manifest-v1.schema.json
-          tag="$(gh release list --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("blocker-"))][0].tagName // ""')"
+          gh release list --limit 100 --json tagName > "$RUNNER_TEMP/blocker-releases.json"
+          tag="$(python3 Tools/blocker_release_version.py \
+            --releases-json "$RUNNER_TEMP/blocker-releases.json" \
+            --print-latest)"
           if [ -n "$tag" ]; then
             version="${tag#blocker-}"
             mkdir -p "site/blocker/$version"

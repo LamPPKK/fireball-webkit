@@ -36,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: python3 -m unittest discover -s Tools/tests
-      - run: python3 -m py_compile Tools/build_blocker.py Tools/create_blocker_manifest.py Tools/release_preflight.py Tools/select_simulator.py Tools/verify_ipa.py
+      - run: python3 -m py_compile Tools/blocker_release_version.py Tools/build_blocker.py Tools/create_blocker_manifest.py Tools/release_preflight.py Tools/select_simulator.py Tools/verify_ipa.py
 
   configuration:
     runs-on: macos-15

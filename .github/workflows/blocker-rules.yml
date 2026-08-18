@@ -23,6 +23,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: brew install xcodegen
+      - name: Enforce monotonic immutable version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --limit 100 --json tagName > "$RUNNER_TEMP/blocker-releases.json"
+          python3 Tools/blocker_release_version.py \
+            --candidate "${{ inputs.version }}" \
+            --releases-json "$RUNNER_TEMP/blocker-releases.json"
       - name: Convert pinned EasyList sources
         run: python3 Tools/build_blocker.py --sources Blocker/sources.json --output build/blocker
       - name: Materialize protected signing key
@@ -94,6 +102,9 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site
+      - name: Remove blocker signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/blocker-signing-key.pem"
 
   deploy:
     needs: release

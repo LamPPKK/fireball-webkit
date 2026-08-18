@@ -11,7 +11,7 @@ jobs:
     environment: testflight
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: brew install xcodegen
       - name: Enforce release preconditions
         env:
@@ -88,7 +88,7 @@ jobs:
           ipa="$(find "$RUNNER_TEMP/export" -maxdepth 1 -name '*.ipa' -print -quit)"
           shasum -a 256 --check "$RUNNER_TEMP/FireballWebKit.ipa.sha256"
           xcrun altool --upload-app -f "$ipa" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: Fireball-WebKit-${{ github.run_number }}
           path: |

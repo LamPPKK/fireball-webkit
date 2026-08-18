@@ -18,6 +18,7 @@ final class BrowserSmokeUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 3))
     }
 
+    @MainActor
     func testTabCardSwipeClosesOneOfTwoTabs() {
         let app = XCUIApplication()
         app.launchEnvironment["FIREBALL_UI_TESTING"] = "1"

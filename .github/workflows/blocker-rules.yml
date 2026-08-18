@@ -21,7 +21,7 @@ jobs:
     environment: blocker-release
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: brew install xcodegen
       - name: Convert pinned EasyList sources
         run: python3 Tools/build_blocker.py --sources Blocker/sources.json --output build/blocker
@@ -90,8 +90,8 @@ jobs:
           cp Blocker/manifest.schema.json site/blocker-manifest-v1.schema.json
           cp build/blocker/content-rules-*.json "site/blocker/${{ inputs.version }}/"
           cp build/blocker/manifest-v1.json build/blocker/conversion-report.json site/blocker/
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
@@ -103,4 +103,4 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

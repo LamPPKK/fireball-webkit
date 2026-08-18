@@ -11,7 +11,7 @@ jobs:
   ios:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: brew install xcodegen
       - run: xcodegen generate
       - name: Select supported simulators
@@ -34,13 +34,13 @@ jobs:
   blocker-tools:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: python3 -m unittest discover -s Tools/tests
       - run: python3 -m py_compile Tools/build_blocker.py Tools/create_blocker_manifest.py Tools/release_preflight.py Tools/select_simulator.py Tools/verify_ipa.py
 
   configuration:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: plutil -lint Resources/PrivacyInfo.xcprivacy Config/*.plist Config/*.entitlements
       - run: git diff --check

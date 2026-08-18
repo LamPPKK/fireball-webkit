@@ -56,7 +56,7 @@ The `testflight` GitHub environment requires:
 - environment variable `CLOUDKIT_SCHEMA_PROMOTED=true` only after the development schema has been promoted to production;
 - manual approval before archive and upload.
 
-Build numbers use the GitHub Actions run number. CI archives once, exports and validates that archive, then uploads the exact IPA without rebuilding.
+Build numbers use the GitHub Actions run number. CI archives once, verifies the distribution signature and production entitlements, then checks the exact IPA's release flags, privacy declarations, blocker-key binding and absence of packaged private-key files before validation and upload without rebuilding.
 
 External TestFlight acceptance, two-device iCloud validation, physical-device accessibility checks and Apple Beta App Review remain external release gates. Fireball Blink must not begin until those gates pass. XanhTab and fireball-docker remain frozen and are not modified by this roadmap.
 

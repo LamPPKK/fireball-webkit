@@ -23,7 +23,7 @@ For each candidate, retain:
 - `altool` validation and upload result.
 - App Store Connect processing result and TestFlight build identifier.
 
-The workflow archives once, exports once, verifies bundle/version/build metadata, checks the privacy manifest and blocker public key, records the IPA checksum, and uploads that same file.
+The workflow archives once, verifies the distribution signature and production entitlements, exports once, checks bundle/version/build metadata, production flags, iPhone/iPad support, privacy declarations, the exact blocker public key and absence of packaged private-key files, records the IPA checksum, and uploads that same file.
 
 ## Required device evidence
 

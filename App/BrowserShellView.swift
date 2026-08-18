@@ -9,6 +9,7 @@ struct BrowserShellView: View {
     @Bindable var store: BrowserStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .body) private var addressControlHeight: CGFloat = 48
     @State private var address = ""
     @State private var showTabs = false
     @State private var showLibrary = false
@@ -103,7 +104,7 @@ struct BrowserShellView: View {
                 .font(.subheadline.monospaced().weight(.black))
                 .tracking(1.8)
             Rectangle().fill(Color.fireballGreen).frame(width: 22, height: 2)
-            if !dynamicTypeSize.isAccessibilitySize {
+            if horizontalSizeClass == .regular && !dynamicTypeSize.isAccessibilitySize {
                 Text(store.activeProfile?.name.uppercased() ?? "NO PROFILE")
                     .foregroundStyle(Color.fireballMuted)
                 Text("/")
@@ -117,10 +118,13 @@ struct BrowserShellView: View {
                     .foregroundStyle(syncColor)
             }
             Text("\(store.tabsInSelectedSpace.count) TAB\(store.tabsInSelectedSpace.count == 1 ? "" : "S")")
+                .font(.body.weight(.bold))
                 .foregroundStyle(.secondary)
+                .lineLimit(2)
         }
-        .font(.caption2.monospaced().weight(.bold))
+        .font(.body.weight(.bold))
         .padding(.horizontal, 16)
+        .padding(.vertical, 8)
         .frame(minHeight: 40)
         .background(Color.fireballPanel)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.1)).frame(height: 1) }
@@ -132,55 +136,7 @@ struct BrowserShellView: View {
 
     private var bottomToolbar: some View {
         VStack(spacing: 9) {
-            HStack(spacing: 6) {
-                toolButton("chevron.left", label: "Back", enabled: store.activeSession?.canGoBack == true) {
-                    store.activeSession?.goBack()
-                }
-                toolButton("chevron.right", label: "Forward", enabled: store.activeSession?.canGoForward == true) {
-                    store.activeSession?.goForward()
-                }
-                toolButton(
-                    store.activeSession?.isLoading == true ? "xmark" : "arrow.clockwise",
-                    label: store.activeSession?.isLoading == true ? "Stop" : "Reload"
-                ) {
-                    if store.activeSession?.isLoading == true {
-                        store.activeSession?.stopLoading()
-                    } else {
-                        store.activeSession?.reload()
-                    }
-                }
-                toolButton("house", label: "Home") { store.openHome() }
-
-                TextField("Search or enter address", text: $address)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-                    .submitLabel(.go)
-                    .onSubmit(navigate)
-                    .font(.body.monospaced().weight(.medium))
-                    .padding(.horizontal, 14)
-                    .frame(minHeight: 46)
-                    .background(Color.fireballRaised, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .stroke(Color.white.opacity(0.14))
-                    }
-                    .accessibilityLabel("Address and search")
-                    .accessibilityHint("Enter a website address or search terms")
-                    .accessibilityIdentifier("browser.omnibox")
-                    .focused($focusedControl, equals: .address)
-
-                Button(action: navigate) {
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 15, weight: .black))
-                        .frame(width: 46, height: 46)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.fireballBackground)
-                .background(Color.fireballGreen, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .accessibilityLabel("Go")
-                .accessibilityHint("Open the address or search")
-            }
+            navigationAndAddressRow
 
             HStack(spacing: 8) {
                 Button { showTabs = true } label: {
@@ -204,7 +160,6 @@ struct BrowserShellView: View {
                 .accessibilityIdentifier("browser.settings")
             }
             .buttonStyle(FireballCompactButtonStyle())
-            .font(.caption.monospaced().weight(.bold))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -212,11 +167,89 @@ struct BrowserShellView: View {
         .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.1)).frame(height: 1) }
     }
 
+    @ViewBuilder
+    private var navigationAndAddressRow: some View {
+        if horizontalSizeClass == .compact || dynamicTypeSize.isAccessibilitySize {
+            VStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    navigationButtons
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 8) {
+                    addressField
+                    goButton
+                }
+            }
+        } else {
+            HStack(spacing: 6) {
+                navigationButtons
+                addressField
+                goButton
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var navigationButtons: some View {
+        toolButton("chevron.left", label: "Back", enabled: store.activeSession?.canGoBack == true) {
+            store.activeSession?.goBack()
+        }
+        toolButton("chevron.right", label: "Forward", enabled: store.activeSession?.canGoForward == true) {
+            store.activeSession?.goForward()
+        }
+        toolButton(
+            store.activeSession?.isLoading == true ? "xmark" : "arrow.clockwise",
+            label: store.activeSession?.isLoading == true ? "Stop" : "Reload"
+        ) {
+            if store.activeSession?.isLoading == true {
+                store.activeSession?.stopLoading()
+            } else {
+                store.activeSession?.reload()
+            }
+        }
+        toolButton("house", label: "Home") { store.openHome() }
+    }
+
+    private var addressField: some View {
+        TextField("Address", text: $address)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .keyboardType(.URL)
+            .submitLabel(.go)
+            .onSubmit(navigate)
+            .font(.body.monospaced().weight(.medium))
+            .padding(.horizontal, 14)
+            .frame(minHeight: max(48, addressControlHeight))
+            .background(Color.fireballRaised, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(Color.white.opacity(0.14))
+            }
+            .accessibilityLabel("Address and search")
+            .accessibilityHint("Enter a website address or search terms")
+            .accessibilityIdentifier("browser.omnibox")
+            .focused($focusedControl, equals: .address)
+    }
+
+    private var goButton: some View {
+        Button(action: navigate) {
+            Image(systemName: "arrow.up.right")
+                .font(.headline.weight(.black))
+                .frame(width: 48, height: max(48, addressControlHeight))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.fireballBackground)
+        .background(Color.fireballGreen, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .accessibilityLabel("Go")
+        .accessibilityHint("Open the address or search")
+    }
+
     private var loadingView: some View {
         VStack(spacing: 18) {
             ProgressView().tint(Color.fireballGreen).controlSize(.large)
             Text("INITIALIZING PRIVATE STORES")
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .font(.caption.monospaced().weight(.bold))
                 .tracking(1.4)
                 .foregroundStyle(Color.fireballMuted)
         }
@@ -228,7 +261,7 @@ struct BrowserShellView: View {
                 .font(.system(size: 46, weight: .thin))
                 .foregroundStyle(Color.fireballGreen)
             Text("PROFILE LOCKED")
-                .font(.system(size: 24, weight: .black, design: .monospaced))
+                .font(.title2.monospaced().weight(.black))
             Text("Authenticate to reveal \(store.activeProfile?.name ?? "this profile").")
                 .foregroundStyle(Color.fireballMuted)
             Button("Unlock") { Task { await store.unlockActiveProfileIfNeeded() } }
@@ -255,10 +288,10 @@ struct BrowserShellView: View {
                     .font(.system(size: 46, weight: .black))
                     .foregroundStyle(Color.fireballOrange)
                 Text("FIREBALL")
-                    .font(.system(size: 22, weight: .black, design: .monospaced))
+                    .font(.title2.monospaced().weight(.black))
                     .tracking(3)
                 Text("CONTENT HIDDEN")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(.caption.monospaced().weight(.bold))
                     .foregroundStyle(Color.fireballMuted)
             }
         }
@@ -273,8 +306,9 @@ struct BrowserShellView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 14, weight: .bold))
-                .frame(width: 44, height: 46)
+                .font(.body.weight(.bold))
+                .frame(width: 48, height: 48)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
@@ -359,7 +393,8 @@ private struct FireballCompactButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .labelStyle(.iconOnly)
-            .frame(minWidth: 44, minHeight: 36)
+            .frame(minWidth: 48, minHeight: 48)
+            .contentShape(Rectangle())
             .foregroundStyle(configuration.isPressed ? Color.fireballGreen : Color.primary)
             .background(
                 configuration.isPressed ? Color.fireballRaised : Color.clear,

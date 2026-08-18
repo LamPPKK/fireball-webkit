@@ -41,7 +41,7 @@ struct FireballSectionLabel: View {
                 .foregroundStyle(Color.fireballMuted)
             Spacer()
         }
-        .font(.system(size: 11, weight: .bold, design: .monospaced))
+        .font(.caption.monospaced().weight(.bold))
         .tracking(1.2)
         .accessibilityElement(children: .combine)
     }

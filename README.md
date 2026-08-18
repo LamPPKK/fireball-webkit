@@ -10,7 +10,7 @@ Marketing version: `0.1.0` · Bundle identifier: `com.fireball.browser` · Defau
 - A profile owns the WebKit storage boundary; multiple spaces can share one profile.
 - Persistent profiles use `WKWebsiteDataStore(forIdentifier:)`; private spaces use nonpersistent stores and are excluded from restore.
 - Adaptive iPhone/iPad browser UI with a tab grid, space switcher, bottom omnibox, bookmarks, history and native home.
-- Focused-scene iPad keyboard commands for tabs, omnibox and navigation, with a Dynamic Type-aware status rail and VoiceOver metadata.
+- Focused-scene iPad keyboard commands for tabs, omnibox and navigation, with a Dynamic Type-aware status rail, 48-point control targets and automated iPhone/iPad accessibility audits.
 - Confirm-before-open handling for `mailto:` and `tel:`; script, data, file and custom schemes are blocked.
 - Background WebViews are released under memory pressure while tab state and snapshots remain available.
 - `NSPersistentCloudKitContainer` local replica with private CloudKit metadata sync, 30-day deletion tombstones and opt-in 90-day history sync.

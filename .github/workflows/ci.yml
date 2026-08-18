@@ -18,7 +18,7 @@ jobs:
         run: |
           printf 'FIREBALL_IPHONE_UDID=%s\n' "$(python3 Tools/select_simulator.py --family iphone)" >> "$GITHUB_ENV"
           printf 'FIREBALL_IPAD_UDID=%s\n' "$(python3 Tools/select_simulator.py --family ipad)" >> "$GITHUB_ENV"
-      - name: Unit tests on iPhone
+      - name: Unit and accessibility UI tests on iPhone
         run: |
           xcodebuild -project FireballWebKit.xcodeproj \
             -scheme FireballWebKit \
@@ -30,11 +30,12 @@ jobs:
             -scheme FireballWebKit \
             -destination "platform=iOS Simulator,id=$FIREBALL_IPAD_UDID" \
             CODE_SIGNING_ALLOWED=NO build
-      - name: Hardware-keyboard UI test on iPad
+      - name: Accessibility and hardware-keyboard UI tests on iPad
         run: |
           xcodebuild -project FireballWebKit.xcodeproj \
             -scheme FireballWebKit \
             -destination "platform=iOS Simulator,id=$FIREBALL_IPAD_UDID" \
+            -only-testing:FireballWebKitUITests/BrowserSmokeUITests/testBrowserChromePassesAccessibilityAudit \
             -only-testing:FireballWebKitUITests/BrowserSmokeUITests/testIPadHardwareKeyboardCreatesTabAndFocusesAddressBar \
             CODE_SIGNING_ALLOWED=NO test
 

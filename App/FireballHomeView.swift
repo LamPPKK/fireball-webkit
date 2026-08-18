@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FireballHomeView: View {
     @Bindable var store: BrowserStore
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var profileBookmarks: [Bookmark] {
         guard let profileID = store.activeProfile?.id else { return [] }
@@ -74,21 +75,13 @@ struct FireballHomeView: View {
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("BROWSER / 0.1")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundStyle(Color.fireballGreen)
-                Spacer()
-                Text(store.activeProfile?.searchProvider.displayName.uppercased() ?? "BRAVE SEARCH")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(Color.fireballMuted)
-            }
+            heroMetadata
             Text("A QUIET PLACE\nFOR A LOUD WEB.")
-                .font(.system(size: 38, weight: .black, design: .rounded))
+                .font(.system(.largeTitle, design: .rounded, weight: .black))
                 .tracking(-1.2)
-                .minimumScaleFactor(0.7)
+                .fixedSize(horizontal: false, vertical: true)
             Text("Profiles keep website data apart. Private spaces leave no restorable tabs. History stays local unless you explicitly enable iCloud sync.")
-                .font(.system(size: 15, weight: .medium))
+                .font(.body.weight(.medium))
                 .foregroundStyle(Color.fireballMuted)
                 .frame(maxWidth: 590, alignment: .leading)
         }
@@ -113,6 +106,36 @@ struct FireballHomeView: View {
         }
     }
 
+    @ViewBuilder
+    private var heroMetadata: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 6) {
+                versionLabel
+                searchProviderLabel
+            }
+        } else {
+            HStack {
+                versionLabel
+                Spacer()
+                searchProviderLabel
+            }
+        }
+    }
+
+    private var versionLabel: some View {
+        Text("BROWSER / 0.1")
+            .font(.caption.weight(.bold))
+            .foregroundStyle(Color.fireballGreen)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var searchProviderLabel: some View {
+        Text(store.activeProfile?.searchProvider.displayName.uppercased() ?? "BRAVE SEARCH")
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(Color.fireballMuted)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
     private func homeLink(title: String, url: URL, icon: String) -> some View {
         Button {
             try? store.navigate(url.absoluteString)
@@ -121,7 +144,7 @@ struct FireballHomeView: View {
                 Image(systemName: icon)
                     .foregroundStyle(Color.fireballGreen)
                 Text(title)
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .font(.subheadline.monospaced().weight(.bold))
                     .lineLimit(2)
                 Text(url.host() ?? url.absoluteString)
                     .font(.caption2)

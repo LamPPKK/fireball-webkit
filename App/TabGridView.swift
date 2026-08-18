@@ -118,7 +118,7 @@ struct TabGridView: View {
                 Text("\(store.tabs.filter { $0.spaceID == space.id }.count)")
                     .foregroundStyle(Color.fireballMuted)
             }
-            .font(.system(size: 11, weight: .bold, design: .monospaced))
+            .font(.caption.monospaced().weight(.bold))
             .padding(.horizontal, 13)
             .frame(maxWidth: compact ? nil : .infinity, minHeight: 40, alignment: .leading)
             .background(
@@ -157,7 +157,7 @@ struct TabGridView: View {
                 Image(systemName: "plus")
                     .font(.system(size: 24, weight: .light))
                 Text("NEW TAB")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(.caption.monospaced().weight(.bold))
             }
             .foregroundStyle(Color.fireballGreen)
             .frame(maxWidth: .infinity, minHeight: 176)
@@ -210,7 +210,7 @@ private struct SwipeClosableTabCard: View {
                                         .font(.system(size: 25, weight: .light))
                                         .foregroundStyle(tab.isPrivate ? Color.fireballOrange : Color.fireballGreen)
                                     Text(tab.url?.host() ?? "HOME")
-                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                        .font(.caption2.monospaced().weight(.bold))
                                         .foregroundStyle(Color.fireballMuted)
                                 }
                             }
@@ -219,7 +219,7 @@ private struct SwipeClosableTabCard: View {
 
                         VStack(alignment: .leading, spacing: 5) {
                             Text(tab.title)
-                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .font(.caption.monospaced().weight(.bold))
                                 .lineLimit(1)
                             Text(tab.url?.absoluteString ?? "Fireball home")
                                 .font(.caption2)

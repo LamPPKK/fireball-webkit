@@ -40,6 +40,18 @@ final class BrowserSmokeUITests: XCTestCase {
     }
 
     @MainActor
+    func testBrowserChromePassesAccessibilityAudit() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["FIREBALL_UI_TESTING"] = "1"
+        app.launch()
+
+        XCTAssertTrue(app.textFields["browser.omnibox"].waitForExistence(timeout: 10))
+        try app.performAccessibilityAudit(
+            for: [.sufficientElementDescription, .hitRegion, .dynamicType, .textClipped, .trait]
+        )
+    }
+
+    @MainActor
     func testIPadHardwareKeyboardCreatesTabAndFocusesAddressBar() throws {
         guard UIDevice.current.userInterfaceIdiom == .pad else {
             throw XCTSkip("Hardware-keyboard commands are exercised on the iPad destination.")

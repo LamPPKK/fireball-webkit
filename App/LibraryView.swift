@@ -54,7 +54,11 @@ struct LibraryView: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { isPresented = false }
+                    Button { isPresented = false } label: {
+                        Image(systemName: "xmark")
+                            .frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("Done")
                 }
             }
         }

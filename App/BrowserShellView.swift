@@ -154,6 +154,7 @@ struct BrowserShellView: View {
                 Button { showLibrary = true } label: {
                     Label("Library", systemImage: "books.vertical")
                 }
+                .accessibilityIdentifier("browser.library")
                 Button { showSettings = true } label: {
                     Label("Settings", systemImage: "slider.horizontal.3")
                 }

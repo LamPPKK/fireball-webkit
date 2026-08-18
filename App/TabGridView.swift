@@ -45,7 +45,11 @@ struct TabGridView: View {
                     .accessibilityLabel("Create space or profile")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { isPresented = false }
+                    Button { isPresented = false } label: {
+                        Image(systemName: "xmark")
+                            .frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("Done")
                 }
             }
             .alert("New profile", isPresented: $showNewProfile) {
@@ -157,7 +161,7 @@ struct TabGridView: View {
                 Image(systemName: "plus")
                     .font(.system(size: 24, weight: .light))
                 Text("NEW TAB")
-                    .font(.caption.monospaced().weight(.bold))
+                    .font(.body.monospaced().weight(.bold))
             }
             .foregroundStyle(Color.fireballGreen)
             .frame(maxWidth: .infinity, minHeight: 176)
@@ -210,7 +214,7 @@ private struct SwipeClosableTabCard: View {
                                         .font(.system(size: 25, weight: .light))
                                         .foregroundStyle(tab.isPrivate ? Color.fireballOrange : Color.fireballGreen)
                                     Text(tab.url?.host() ?? "HOME")
-                                        .font(.caption2.monospaced().weight(.bold))
+                                        .font(.body.monospaced().weight(.bold))
                                         .foregroundStyle(Color.fireballMuted)
                                 }
                             }
@@ -219,12 +223,12 @@ private struct SwipeClosableTabCard: View {
 
                         VStack(alignment: .leading, spacing: 5) {
                             Text(tab.title)
-                                .font(.caption.monospaced().weight(.bold))
-                                .lineLimit(1)
+                                .font(.body.monospaced().weight(.bold))
+                                .fixedSize(horizontal: false, vertical: true)
                             Text(tab.url?.absoluteString ?? "Fireball home")
-                                .font(.caption2)
+                                .font(.body)
                                 .foregroundStyle(Color.fireballMuted)
-                                .lineLimit(1)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(12)
                     }

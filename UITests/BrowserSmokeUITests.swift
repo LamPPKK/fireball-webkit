@@ -52,6 +52,33 @@ final class BrowserSmokeUITests: XCTestCase {
     }
 
     @MainActor
+    func testTabGridPassesAccessibilityAudit() throws {
+        let app = launchApp()
+        app.buttons["browser.tabs"].tap()
+
+        XCTAssertTrue(app.buttons["tabs.new"].waitForExistence(timeout: 3))
+        try performAccessibilityAudit(app)
+    }
+
+    @MainActor
+    func testLibraryPassesAccessibilityAudit() throws {
+        let app = launchApp()
+        app.buttons["browser.library"].tap()
+
+        XCTAssertTrue(app.navigationBars["Library"].waitForExistence(timeout: 3))
+        try performAccessibilityAudit(app)
+    }
+
+    @MainActor
+    func testSettingsPassesAccessibilityAudit() throws {
+        let app = launchApp()
+        app.buttons["browser.settings"].tap()
+
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 3))
+        try performAccessibilityAudit(app)
+    }
+
+    @MainActor
     func testIPadHardwareKeyboardCreatesTabAndFocusesAddressBar() throws {
         guard UIDevice.current.userInterfaceIdiom == .pad else {
             throw XCTSkip("Hardware-keyboard commands are exercised on the iPad destination.")
@@ -81,5 +108,21 @@ final class BrowserSmokeUITests: XCTestCase {
             return nil
         }
         return Int(status[match].split(separator: " ")[0])
+    }
+
+    @MainActor
+    private func launchApp() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment["FIREBALL_UI_TESTING"] = "1"
+        app.launch()
+        XCTAssertTrue(app.textFields["browser.omnibox"].waitForExistence(timeout: 10))
+        return app
+    }
+
+    @MainActor
+    private func performAccessibilityAudit(_ app: XCUIApplication) throws {
+        try app.performAccessibilityAudit(
+            for: [.sufficientElementDescription, .hitRegion, .dynamicType, .textClipped, .trait]
+        )
     }
 }

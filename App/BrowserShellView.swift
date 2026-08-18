@@ -2,12 +2,19 @@ import SwiftUI
 import UIKit
 
 struct BrowserShellView: View {
+    private enum FocusedControl: Hashable {
+        case address
+    }
+
     @Bindable var store: BrowserStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var address = ""
     @State private var showTabs = false
     @State private var showLibrary = false
     @State private var showSettings = false
+    @State private var commandRouter = BrowserCommandRouter()
+    @FocusState private var focusedControl: FocusedControl?
 
     var body: some View {
         ZStack {
@@ -62,6 +69,8 @@ struct BrowserShellView: View {
         }
         .onChange(of: store.selectedTabID) { _, _ in syncAddress() }
         .onChange(of: store.activeSession?.currentURL) { _, _ in syncAddress() }
+        .onChange(of: commandRouter.sequence) { _, _ in handleCommand() }
+        .focusedSceneValue(\.browserCommandRouter, commandRouter)
     }
 
     private var browserChrome: some View {
@@ -91,28 +100,34 @@ struct BrowserShellView: View {
     private var statusRail: some View {
         HStack(spacing: 10) {
             Text("FIREBALL")
-                .font(.system(size: 15, weight: .black, design: .monospaced))
+                .font(.subheadline.monospaced().weight(.black))
                 .tracking(1.8)
             Rectangle().fill(Color.fireballGreen).frame(width: 22, height: 2)
-            Text(store.activeProfile?.name.uppercased() ?? "NO PROFILE")
-                .foregroundStyle(Color.fireballMuted)
-            Text("/")
-                .foregroundStyle(Color.white.opacity(0.24))
-            Text(store.selectedSpace?.name.uppercased() ?? "NO SPACE")
-                .foregroundStyle(store.selectedSpace?.storageMode == .ephemeral ? Color.fireballOrange : .secondary)
+            if !dynamicTypeSize.isAccessibilitySize {
+                Text(store.activeProfile?.name.uppercased() ?? "NO PROFILE")
+                    .foregroundStyle(Color.fireballMuted)
+                Text("/")
+                    .foregroundStyle(Color.white.opacity(0.24))
+                Text(store.selectedSpace?.name.uppercased() ?? "NO SPACE")
+                    .foregroundStyle(store.selectedSpace?.storageMode == .ephemeral ? Color.fireballOrange : .secondary)
+            }
             Spacer()
-            if horizontalSizeClass == .regular {
+            if horizontalSizeClass == .regular && !dynamicTypeSize.isAccessibilitySize {
                 Text(store.syncStatus.label)
                     .foregroundStyle(syncColor)
             }
             Text("\(store.tabsInSelectedSpace.count) TAB\(store.tabsInSelectedSpace.count == 1 ? "" : "S")")
                 .foregroundStyle(.secondary)
         }
-        .font(.system(size: 10, weight: .bold, design: .monospaced))
+        .font(.caption2.monospaced().weight(.bold))
         .padding(.horizontal, 16)
         .frame(minHeight: 40)
         .background(Color.fireballPanel)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.1)).frame(height: 1) }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Browser status")
+        .accessibilityValue(statusAccessibilityValue)
+        .accessibilityIdentifier("browser.status")
     }
 
     private var bottomToolbar: some View {
@@ -142,7 +157,7 @@ struct BrowserShellView: View {
                     .keyboardType(.URL)
                     .submitLabel(.go)
                     .onSubmit(navigate)
-                    .font(.system(size: 14, weight: .medium, design: .monospaced))
+                    .font(.body.monospaced().weight(.medium))
                     .padding(.horizontal, 14)
                     .frame(minHeight: 46)
                     .background(Color.fireballRaised, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
@@ -151,7 +166,9 @@ struct BrowserShellView: View {
                             .stroke(Color.white.opacity(0.14))
                     }
                     .accessibilityLabel("Address and search")
+                    .accessibilityHint("Enter a website address or search terms")
                     .accessibilityIdentifier("browser.omnibox")
+                    .focused($focusedControl, equals: .address)
 
                 Button(action: navigate) {
                     Image(systemName: "arrow.up.right")
@@ -162,6 +179,7 @@ struct BrowserShellView: View {
                 .foregroundStyle(Color.fireballBackground)
                 .background(Color.fireballGreen, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                 .accessibilityLabel("Go")
+                .accessibilityHint("Open the address or search")
             }
 
             HStack(spacing: 8) {
@@ -186,7 +204,7 @@ struct BrowserShellView: View {
                 .accessibilityIdentifier("browser.settings")
             }
             .buttonStyle(FireballCompactButtonStyle())
-            .font(.system(size: 11, weight: .bold, design: .monospaced))
+            .font(.caption.monospaced().weight(.bold))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -274,6 +292,43 @@ struct BrowserShellView: View {
 
     private func syncAddress() {
         address = store.activeSession?.currentURL?.absoluteString ?? store.activeTab?.url?.absoluteString ?? ""
+    }
+
+    private func handleCommand() {
+        guard let request = commandRouter.request else { return }
+        switch request {
+        case .newTab:
+            _ = store.createTab()
+            syncAddress()
+            focusedControl = .address
+        case .closeTab:
+            guard let tabID = store.selectedTabID else { return }
+            store.closeTab(tabID)
+            syncAddress()
+        case .focusAddress:
+            syncAddress()
+            focusedControl = .address
+        case .goBack:
+            store.activeSession?.goBack()
+        case .goForward:
+            store.activeSession?.goForward()
+        case .reload:
+            store.activeSession?.reload()
+        case .home:
+            store.openHome()
+            syncAddress()
+        case .showTabs:
+            showTabs = true
+        case .toggleBookmark:
+            store.toggleBookmarkForActiveTab()
+        }
+    }
+
+    private var statusAccessibilityValue: String {
+        let profile = store.activeProfile?.name ?? "No profile"
+        let space = store.selectedSpace?.name ?? "No space"
+        let tabCount = store.tabsInSelectedSpace.count
+        return "Profile \(profile), space \(space), \(tabCount) tab\(tabCount == 1 ? "" : "s"), sync \(store.syncStatus.label)"
     }
 
     private var syncColor: Color {

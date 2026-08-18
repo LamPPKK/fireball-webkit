@@ -30,6 +30,13 @@ jobs:
             -scheme FireballWebKit \
             -destination "platform=iOS Simulator,id=$FIREBALL_IPAD_UDID" \
             CODE_SIGNING_ALLOWED=NO build
+      - name: Hardware-keyboard UI test on iPad
+        run: |
+          xcodebuild -project FireballWebKit.xcodeproj \
+            -scheme FireballWebKit \
+            -destination "platform=iOS Simulator,id=$FIREBALL_IPAD_UDID" \
+            -only-testing:FireballWebKitUITests/BrowserSmokeUITests/testIPadHardwareKeyboardCreatesTabAndFocusesAddressBar \
+            CODE_SIGNING_ALLOWED=NO test
 
   blocker-tools:
     runs-on: ubuntu-24.04

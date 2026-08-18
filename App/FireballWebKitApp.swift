@@ -35,6 +35,9 @@ struct FireballWebKitApp: App {
                     }
                 }
         }
+        .commands {
+            BrowserCommands()
+        }
     }
 
     private static func makeBlockerUpdater() -> (service: BlockerUpdateService, manifestURL: URL)? {

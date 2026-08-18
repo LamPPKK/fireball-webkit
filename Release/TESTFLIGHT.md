@@ -45,8 +45,8 @@ Record pass/fail, device model, OS version, build number, tester, and evidence l
 | Biometric-set change | Protected profile fails closed and device-owner recovery works |
 | 100-cycle stability | 100 navigation, new-tab, switch, and close cycles produce no reproducible crash or data loss |
 | VoiceOver | Browser controls, tab cards, spaces, privacy state, and destructive actions are named and ordered |
-| Dynamic Type | Core controls remain reachable at accessibility sizes |
-| Hardware keyboard | Omnibox, navigation, tab grid, and settings can be reached without touch |
+| Dynamic Type | Core controls remain reachable at accessibility sizes; the status rail collapses nonessential metadata |
+| Hardware keyboard | On iPad, verify Cmd-T, Cmd-W, Cmd-L, Cmd-R, Cmd-[, Cmd-], Cmd-Shift-\\ and Cmd-D; omnibox, navigation, tab grid, and settings remain reachable without touch |
 
 ## Go/no-go
 

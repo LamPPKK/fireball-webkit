@@ -13,6 +13,7 @@ struct BrowserShellView: View {
     @State private var address = ""
     @State private var showTabs = false
     @State private var showLibrary = false
+    @State private var showDownloads = false
     @State private var showSettings = false
     @State private var commandRouter = BrowserCommandRouter()
     @FocusState private var focusedControl: FocusedControl?
@@ -41,6 +42,9 @@ struct BrowserShellView: View {
         }
         .sheet(isPresented: $showLibrary) {
             LibraryView(store: store, isPresented: $showLibrary)
+        }
+        .sheet(isPresented: $showDownloads) {
+            DownloadsView(store: store, isPresented: $showDownloads)
         }
         .sheet(isPresented: $showSettings) {
             SettingsView(store: store)
@@ -152,13 +156,6 @@ struct BrowserShellView: View {
                 }
                 .accessibilityIdentifier("browser.tabs")
                 Spacer()
-                Button { store.toggleBookmarkForActiveTab() } label: {
-                    Label(
-                        "Bookmark",
-                        systemImage: store.isBookmarked(store.activeTab?.url) ? "bookmark.fill" : "bookmark"
-                    )
-                }
-                .disabled(store.activeTab?.url == nil || store.activeTab?.isPrivate == true)
                 if let url = store.activeTab?.url {
                     ShareLink(item: url) {
                         Label("Share", systemImage: "square.and.arrow.up")
@@ -169,6 +166,23 @@ struct BrowserShellView: View {
                     Label("Library", systemImage: "books.vertical")
                 }
                 .accessibilityIdentifier("browser.library")
+                Button { showDownloads = true } label: {
+                    ZStack(alignment: .topTrailing) {
+                        Label("Downloads", systemImage: "arrow.down.circle")
+                        if store.downloadCenter.activeCount > 0 {
+                            Text("\(store.downloadCenter.activeCount)")
+                                .font(.caption2.monospacedDigit().weight(.black))
+                                .foregroundStyle(Color.fireballBackground)
+                                .padding(.horizontal, 5)
+                                .frame(minWidth: 18, minHeight: 18)
+                                .background(Color.fireballGreen, in: Capsule())
+                                .offset(x: 8, y: -8)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                }
+                .accessibilityLabel(downloadsAccessibilityLabel)
+                .accessibilityIdentifier("browser.downloads")
                 Button { showSettings = true } label: {
                     Label("Settings", systemImage: "slider.horizontal.3")
                 }
@@ -408,6 +422,11 @@ struct BrowserShellView: View {
         case .localOnly: .fireballMuted
         case .degraded: .fireballOrange
         }
+    }
+
+    private var downloadsAccessibilityLabel: String {
+        let count = store.downloadCenter.activeCount
+        return count == 0 ? "Downloads" : "Downloads, \(count) active"
     }
 
     private var errorBinding: Binding<Bool> {

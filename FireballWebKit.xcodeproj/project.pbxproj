@@ -19,6 +19,7 @@
 		46B713CC9F0224DEADBF559C /* BrowserSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94F671FB9244D09BEA91E23C /* BrowserSession.swift */; };
 		49113F7C2DAB47E62E519B57 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4EA70DE1D63F6F35FB6640F7 /* Assets.xcassets */; };
 		4C1844AC42B800F426727C16 /* FireballWebKitApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE74CDAC9F6FE177810B589D /* FireballWebKitApp.swift */; };
+		4FD702C2DE8AF6751E4C3272 /* DownloadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C994BD9A2AA2CB63B08C5BC /* DownloadsView.swift */; };
 		56A3FAEBEB43DEF1428F946E /* BrowserStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70347C01913BFE2E80A210B7 /* BrowserStoreTests.swift */; };
 		5BA4AC2768FEC0C10C10E682 /* SessionRestorationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF48755A5524DCB0A481444E /* SessionRestorationTests.swift */; };
 		6973E3E1D07D23D52417EF20 /* CoreDataBrowserRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBCACB5711CA36FE02C6DABF /* CoreDataBrowserRepository.swift */; };
@@ -31,7 +32,9 @@
 		9787C7F0AA0E096354C83C8C /* BlockerExternalManifestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3271EDD39434DD4EFBB50667 /* BlockerExternalManifestTests.swift */; };
 		9A9FB2281BDAA8A890E48B19 /* WebsiteDataStoreRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A5E2BEA98AE2D8FC43CF5F8 /* WebsiteDataStoreRegistry.swift */; };
 		9ED9E5EAF1F029BA484C7C0F /* BrowserCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7D5F8899ACA39B2F5DFA1C8 /* BrowserCommands.swift */; };
+		A092D32F9345FAF46392D9FA /* BrowserDownloadCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A6DE8AFE79CFB83A0850882 /* BrowserDownloadCenter.swift */; };
 		A1B17228A845B7CEF4B3A853 /* BrowserSmokeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C48E7703389C2914A670B29 /* BrowserSmokeUITests.swift */; };
+		A8D1B8E8DEBD01339F14A896 /* BrowserDownloadCenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E26DDBC36E8CCEDCDBBFB6C5 /* BrowserDownloadCenterTests.swift */; };
 		AD62D215C25B265F011A4EFE /* SecureAccessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49EB57AB05C169E8ACD4FADF /* SecureAccessTests.swift */; };
 		B0308FD0EADE4E5783CC64BC /* content-rules.json in Resources */ = {isa = PBXBuildFile; fileRef = D8855AA879B1A32E6F888309 /* content-rules.json */; };
 		B090780674F9D52898DD4CA2 /* BlockerManifestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD4ED612CD108D749704BEF8 /* BlockerManifestTests.swift */; };
@@ -65,6 +68,7 @@
 		1FB9686055E9AE78B4D14E9A /* WebContentProcessRecoveryPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebContentProcessRecoveryPolicy.swift; sourceTree = "<group>"; };
 		29B9EDC551FF7414A627245D /* BrowserStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserStore.swift; sourceTree = "<group>"; };
 		2A5E2BEA98AE2D8FC43CF5F8 /* WebsiteDataStoreRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebsiteDataStoreRegistry.swift; sourceTree = "<group>"; };
+		2A6DE8AFE79CFB83A0850882 /* BrowserDownloadCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserDownloadCenter.swift; sourceTree = "<group>"; };
 		2AB166EE2F529765B3C6444F /* SessionRestoration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRestoration.swift; sourceTree = "<group>"; };
 		309E3660F5F2396766CCD8C3 /* FireballWebKit.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = FireballWebKit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3271EDD39434DD4EFBB50667 /* BlockerExternalManifestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockerExternalManifestTests.swift; sourceTree = "<group>"; };
@@ -80,6 +84,7 @@
 		777F0A9BD7AAFD0B218BB010 /* BrowserModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserModels.swift; sourceTree = "<group>"; };
 		78074B27C0E2AB8C669DDDE7 /* TabGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabGridView.swift; sourceTree = "<group>"; };
 		7B1B86BB75BBD6D99CF2BF71 /* FireballTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FireballTheme.swift; sourceTree = "<group>"; };
+		7C994BD9A2AA2CB63B08C5BC /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
 		88F5AEEB5C5EB09AB94C3701 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		94A9A65719BE645A4097D5F6 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		94F671FB9244D09BEA91E23C /* BrowserSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserSession.swift; sourceTree = "<group>"; };
@@ -97,6 +102,7 @@
 		DBCACB5711CA36FE02C6DABF /* CoreDataBrowserRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreDataBrowserRepository.swift; sourceTree = "<group>"; };
 		DEA39450276A694055C5FC46 /* blocker-public-key.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "blocker-public-key.txt"; sourceTree = "<group>"; };
 		DECF2131722969E5B34FD3AE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		E26DDBC36E8CCEDCDBBFB6C5 /* BrowserDownloadCenterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserDownloadCenterTests.swift; sourceTree = "<group>"; };
 		E6B74389B45552B83E1C50DB /* WebContentProcessRecoveryPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebContentProcessRecoveryPolicyTests.swift; sourceTree = "<group>"; };
 		F7D5F8899ACA39B2F5DFA1C8 /* BrowserCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserCommands.swift; sourceTree = "<group>"; };
 		FE74CDAC9F6FE177810B589D /* FireballWebKitApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FireballWebKitApp.swift; sourceTree = "<group>"; };
@@ -164,6 +170,7 @@
 		A4306393450868C3B3BD8ECE /* Browser */ = {
 			isa = PBXGroup;
 			children = (
+				2A6DE8AFE79CFB83A0850882 /* BrowserDownloadCenter.swift */,
 				94F671FB9244D09BEA91E23C /* BrowserSession.swift */,
 				29B9EDC551FF7414A627245D /* BrowserStore.swift */,
 				9E0F9A5458C5532BFA5B6E15 /* BrowserWebView.swift */,
@@ -192,6 +199,7 @@
 				62C7CE7B569D10BF64A7A3AB /* BlockerArtifactCompilationTests.swift */,
 				3271EDD39434DD4EFBB50667 /* BlockerExternalManifestTests.swift */,
 				AD4ED612CD108D749704BEF8 /* BlockerManifestTests.swift */,
+				E26DDBC36E8CCEDCDBBFB6C5 /* BrowserDownloadCenterTests.swift */,
 				AF80B089A63006EECDD15BE6 /* BrowserModelsTests.swift */,
 				4AF4B429BE19B7608C43A4D1 /* BrowserPersistenceTests.swift */,
 				70347C01913BFE2E80A210B7 /* BrowserStoreTests.swift */,
@@ -217,6 +225,7 @@
 			children = (
 				F7D5F8899ACA39B2F5DFA1C8 /* BrowserCommands.swift */,
 				98B45283F3A782EFECC640A2 /* BrowserShellView.swift */,
+				7C994BD9A2AA2CB63B08C5BC /* DownloadsView.swift */,
 				377CC59113B52BCF7F9E7A5A /* FireballHomeView.swift */,
 				7B1B86BB75BBD6D99CF2BF71 /* FireballTheme.swift */,
 				FE74CDAC9F6FE177810B589D /* FireballWebKitApp.swift */,
@@ -349,6 +358,7 @@
 				15F0104ABCAA5C19552F90A0 /* BlockerArtifactCompilationTests.swift in Sources */,
 				9787C7F0AA0E096354C83C8C /* BlockerExternalManifestTests.swift in Sources */,
 				B090780674F9D52898DD4CA2 /* BlockerManifestTests.swift in Sources */,
+				A8D1B8E8DEBD01339F14A896 /* BrowserDownloadCenterTests.swift in Sources */,
 				169F7BFF49BE6DE9B90533A9 /* BrowserModelsTests.swift in Sources */,
 				88F65EC08FA503A9D6C5D166 /* BrowserPersistenceTests.swift in Sources */,
 				56A3FAEBEB43DEF1428F946E /* BrowserStoreTests.swift in Sources */,
@@ -364,6 +374,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9ED9E5EAF1F029BA484C7C0F /* BrowserCommands.swift in Sources */,
+				A092D32F9345FAF46392D9FA /* BrowserDownloadCenter.swift in Sources */,
 				F22E441E6EE52D9B61B12A08 /* BrowserModels.swift in Sources */,
 				2802466098E1C0D6E2551141 /* BrowserRepository.swift in Sources */,
 				46B713CC9F0224DEADBF559C /* BrowserSession.swift in Sources */,
@@ -372,6 +383,7 @@
 				BC704C8C0D5C04640EE911E6 /* BrowserWebView.swift in Sources */,
 				96B5CE3A6C79E704DF1E6517 /* ContentRuleService.swift in Sources */,
 				6973E3E1D07D23D52417EF20 /* CoreDataBrowserRepository.swift in Sources */,
+				4FD702C2DE8AF6751E4C3272 /* DownloadsView.swift in Sources */,
 				263E67BDCCEFAAC484A2BA8C /* FireballHomeView.swift in Sources */,
 				90F2FD3BE627ED4E9B7C8125 /* FireballTheme.swift in Sources */,
 				4C1844AC42B800F426727C16 /* FireballWebKitApp.swift in Sources */,

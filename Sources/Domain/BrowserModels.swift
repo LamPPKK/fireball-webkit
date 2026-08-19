@@ -30,6 +30,10 @@ struct HistoryVisitID: UUIDBackedIdentifier {
     let rawValue: UUID
 }
 
+struct DownloadID: UUIDBackedIdentifier {
+    let rawValue: UUID
+}
+
 enum StorageMode: String, Codable, Sendable {
     case persistent
     case ephemeral

@@ -53,13 +53,14 @@ p, li { max-width: 70ch; color: var(--muted); }
   padding: 1.4rem;
 }
 .callout { margin: 2rem 0; border-left: 3px solid var(--green); }
-.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 3rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-top: 3rem; }
 .card strong { display: block; margin-bottom: 0.5rem; color: var(--ink); }
 .showcase { margin-top: 7rem; }
 .showcase h2 { max-width: 14ch; margin: 0.8rem 0 1rem; font-size: clamp(2.4rem, 6vw, 4.6rem); line-height: 0.98; }
 .screens { display: grid; gap: 1rem; margin-top: 2rem; }
 .phone-screens { grid-template-columns: repeat(3, 1fr); }
 .ipad-screens { grid-template-columns: repeat(2, 1fr); }
+.transfer-screens { grid-template-columns: minmax(180px, 0.72fr) minmax(320px, 1.28fr); }
 figure { margin: 0; padding: 0.75rem; border: 1px solid var(--line); border-radius: 18px; background: #0e1311; }
 figure img { display: block; width: 100%; height: auto; border-radius: 12px; }
 figcaption { padding: 0.8rem 0.25rem 0.2rem; color: var(--muted); font: 700 0.72rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -68,6 +69,6 @@ code { color: var(--orange); }
 @media (max-width: 720px) {
   main { padding: 3.5rem 0; }
   .grid { grid-template-columns: 1fr; }
-  .phone-screens, .ipad-screens { grid-template-columns: 1fr; }
+  .phone-screens, .ipad-screens, .transfer-screens { grid-template-columns: 1fr; }
   .nav-links { gap: 0.75rem; font-size: 0.86rem; }
 }

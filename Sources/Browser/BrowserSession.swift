@@ -19,6 +19,7 @@ final class BrowserSession {
     @ObservationIgnored var onOpenNewTab: ((URL) -> Void)?
     @ObservationIgnored var onExternalURL: ((URL) -> Void)?
     @ObservationIgnored var onWebContentProcessTerminated: ((BrowserSession) -> Void)?
+    @ObservationIgnored var onDownloadStarted: ((WKDownload, DownloadID?) -> Void)?
     @ObservationIgnored private var pendingContentRules: [WKContentRuleList]?
     @ObservationIgnored private var recoveryPolicy = WebContentProcessRecoveryPolicy()
     @ObservationIgnored private var webViewDelegate: BrowserSessionWebViewDelegate?
@@ -119,6 +120,16 @@ final class BrowserSession {
         onWebContentProcessTerminated?(self)
     }
 
+    func beginDownload(_ download: WKDownload, resuming id: DownloadID? = nil) {
+        onDownloadStarted?(download, id)
+    }
+
+    func resumeDownload(from data: Data, id: DownloadID) {
+        webView.resumeDownload(fromResumeData: data) { [weak self] download in
+            self?.beginDownload(download, resuming: id)
+        }
+    }
+
     func recoverFromWebContentProcessTermination(isActive: Bool) -> WebContentProcessRecoveryDecision {
         let candidate = webView.url ?? currentURL
         let isRestorable = candidate.map {
@@ -181,6 +192,11 @@ private final class BrowserSessionWebViewDelegate: NSObject, WKNavigationDelegat
         decidePolicyFor navigationAction: WKNavigationAction
     ) async -> WKNavigationActionPolicy {
         guard let session else { return .cancel }
+        if navigationAction.shouldPerformDownload,
+           BrowserDownloadResponsePolicy.allowsDownloadURL(navigationAction.request.url) {
+            session.applyPendingPolicy()
+            return .download
+        }
         switch URLPolicy(searchProvider: session.profile.searchProvider)
             .disposition(for: navigationAction.request.url) {
         case .web:
@@ -194,6 +210,40 @@ private final class BrowserSessionWebViewDelegate: NSObject, WKNavigationDelegat
         case .blocked:
             return .cancel
         }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationResponse: WKNavigationResponse
+    ) async -> WKNavigationResponsePolicy {
+        guard let session,
+              URLPolicy(searchProvider: session.profile.searchProvider)
+                .allowsNavigation(to: navigationResponse.response.url) else {
+            return .cancel
+        }
+        let disposition = (navigationResponse.response as? HTTPURLResponse)?
+            .value(forHTTPHeaderField: "Content-Disposition")?
+            .lowercased()
+        return BrowserDownloadResponsePolicy.shouldDownload(
+            canShowMIMEType: navigationResponse.canShowMIMEType,
+            contentDisposition: disposition
+        ) ? .download : .allow
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        navigationAction: WKNavigationAction,
+        didBecome download: WKDownload
+    ) {
+        session?.beginDownload(download)
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        navigationResponse: WKNavigationResponse,
+        didBecome download: WKDownload
+    ) {
+        session?.beginDownload(download)
     }
 
     func webView(

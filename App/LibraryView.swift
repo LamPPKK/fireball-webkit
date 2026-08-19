@@ -44,7 +44,26 @@ struct LibraryView: View {
             .navigationTitle("Library")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if section == .history && !profileHistory.isEmpty {
+                if section == .bookmarks, canToggleActiveBookmark {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            store.toggleBookmarkForActiveTab()
+                        } label: {
+                            Image(
+                                systemName: store.isBookmarked(store.activeTab?.url)
+                                    ? "bookmark.slash"
+                                    : "bookmark"
+                            )
+                            .frame(width: 44, height: 44)
+                        }
+                        .accessibilityLabel(
+                            store.isBookmarked(store.activeTab?.url)
+                                ? "Remove current bookmark"
+                                : "Bookmark current page"
+                        )
+                        .accessibilityIdentifier("library.bookmark-toggle")
+                    }
+                } else if section == .history && !profileHistory.isEmpty {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Clear", role: .destructive) {
                             if let profileID = store.activeProfile?.id {
@@ -63,6 +82,10 @@ struct LibraryView: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    private var canToggleActiveBookmark: Bool {
+        store.activeTab?.url != nil && store.activeTab?.isPrivate == false
     }
 
     private var bookmarksList: some View {

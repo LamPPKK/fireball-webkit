@@ -31,10 +31,14 @@ Marketing version `0.1.0` · Bundle identifier `com.fireball.browser` · Default
 | --- | --- | --- |
 | ![Fireball home on iPad](docs/assets/fireball-ipad-home.png) | ![Fireball adaptive tab grid on iPad](docs/assets/fireball-ipad-tabs.png) | ![Fireball settings on iPad](docs/assets/fireball-ipad-settings.png) |
 
-The six screenshots were captured by `testCaptureDocumentationMedia` from the
-current app build on iPhone 16 and iPad (A16) iOS 18.6 Simulators; the
-MP4 records the same UI-test flow separately. These files are documentation
-evidence, not a substitute for physical-device or TestFlight acceptance.
+| iPhone transfer deck | iPad transfer deck |
+| --- | --- |
+| ![Fireball downloads on iPhone](docs/assets/fireball-iphone-downloads.png) | ![Fireball downloads on iPad](docs/assets/fireball-ipad-downloads.png) |
+
+The eight screenshots were captured by the opt-in XCTest media flow from the
+current app build on iPhone 16 and iPad (A16) iOS 18.6 Simulators; the MP4
+records the same browser flow separately. These files are documentation evidence,
+not a substitute for physical-device or TestFlight acceptance.
 
 ## What is implemented
 
@@ -49,9 +53,17 @@ evidence, not a substitute for physical-device or TestFlight acceptance.
 ### Browsing and resilience
 
 - Bottom omnibox with Brave Search by default and DuckDuckGo, Google, or Bing per profile.
-- Back, Forward, Reload, Home, bookmarks, native URL sharing, and focused-scene iPad keyboard commands.
-- Only HTTP and HTTPS enter WebKit. `mailto:` and `tel:` require confirmation; script, data, file, and custom schemes are blocked.
+- Back, Forward, Reload, Home, bookmarks managed from Library, native URL sharing, and focused-scene iPad keyboard commands.
+- URL policy admits HTTP and HTTPS while Apple Transport Security remains enforced. `mailto:` and `tel:` require confirmation; script, data, file, and custom schemes are blocked.
 - If WebKit terminates the active content process, Fireball retries once. A repeated failure stops the loop and tells the user to reload. A terminated background session is discarded and recreated only when needed.
+
+### Downloads
+
+- Native `WKDownload` handling for HTTP(S) and page-scoped `blob:` download links, `Content-Disposition: attachment`, and MIME types WebKit cannot display.
+- A Fireball transfer tray shows live system progress and supports pause, resume when the server supplies resume data, native sharing, and deletion.
+- Regular files live in `Fireball Downloads`, remain visible after relaunch, and are exposed through the iOS Files integration. Filename normalization and collision suffixes keep destinations inside that directory.
+- Private downloads use a cache-only directory, never enter browser persistence or CloudKit, and are removed when their private space closes or Fireball next launches.
+- Media-link discovery and BitTorrent are desktop Blink workstreams; this WebKit beta does not claim either feature.
 
 ### Privacy and sync
 
@@ -131,7 +143,7 @@ Fireball Blink remains frozen until this gate passes. XanhTab and `fireball-dock
 | Path | Responsibility |
 | --- | --- |
 | `App/` | SwiftUI shell, adaptive surfaces, commands, and app lifecycle |
-| `Sources/Browser/` | `WKWebView` sessions, navigation, blocker application, recovery, and coordination |
+| `Sources/Browser/` | `WKWebView` sessions, navigation, native downloads, blocker application, recovery, and coordination |
 | `Sources/Domain/` | Stable browser models, URL policy, and session restoration |
 | `Sources/Persistence/` | Core Data and private CloudKit metadata replica |
 | `Sources/Security/` | Keychain and LocalAuthentication boundaries |

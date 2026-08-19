@@ -22,6 +22,7 @@ final class BrowserStore {
     var privateSpaceLocked = false
     var blockerStatus = "BUNDLED RULES"
     var pendingExternalURL: URL?
+    let downloadCenter: BrowserDownloadCenter
 
     @ObservationIgnored private let repository: any BrowserRepository
     @ObservationIgnored private let dataStores: WebsiteDataStoreRegistry
@@ -44,7 +45,8 @@ final class BrowserStore {
         ownerAuthenticator: any OwnerAuthenticating = LocalOwnerAuthenticator(),
         loadBundledRules: Bool = true,
         blockerUpdater: BlockerUpdateService? = nil,
-        blockerManifestURL: URL? = nil
+        blockerManifestURL: URL? = nil,
+        downloadCenter: BrowserDownloadCenter = BrowserDownloadCenter()
     ) {
         self.repository = repository
         self.dataStores = dataStores
@@ -54,6 +56,10 @@ final class BrowserStore {
         self.loadBundledRules = loadBundledRules
         self.blockerUpdater = blockerUpdater
         self.blockerManifestURL = blockerManifestURL
+        self.downloadCenter = downloadCenter
+        self.downloadCenter.onError = { [weak self] message in
+            self?.errorMessage = message
+        }
     }
 
     var selectedSpace: BrowserSpace? {
@@ -328,6 +334,29 @@ final class BrowserStore {
         tryPersist()
     }
 
+    func pauseDownload(_ id: DownloadID) {
+        downloadCenter.pause(id)
+    }
+
+    func resumeDownload(_ id: DownloadID) {
+        do {
+            let context = try downloadCenter.resumeContext(for: id)
+            guard let profileID = context.item.profileID,
+                  let tab = downloadHostTab(for: context.item, profileID: profileID),
+                  let session = session(for: tab) else {
+                throw BrowserDownloadError.itemUnavailable
+            }
+            downloadCenter.markResumeStarted(id)
+            session.resumeDownload(from: context.data, id: id)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func removeDownload(_ id: DownloadID) {
+        downloadCenter.remove(id)
+    }
+
     func setHistorySyncEnabled(_ enabled: Bool) {
         settings.historySyncEnabled = enabled
         settings.modifiedAt = .now
@@ -555,6 +584,16 @@ final class BrowserStore {
         session.onWebContentProcessTerminated = { [weak self] session in
             self?.handleWebContentProcessTermination(for: session)
         }
+        session.onDownloadStarted = { [weak self] download, existingID in
+            guard let self else { return }
+            self.downloadCenter.accept(
+                download,
+                tabID: tab.id,
+                profileID: profile.id,
+                isPrivate: profile.storageMode == .ephemeral,
+                resuming: existingID
+            )
+        }
         sessions[tab.id] = session
         if let url = tab.url {
             session.load(url)
@@ -646,6 +685,7 @@ final class BrowserStore {
 
     private func closePrivateSpace(_ spaceID: SpaceID) {
         guard let space = spaces.first(where: { $0.id == spaceID }), space.storageMode == .ephemeral else { return }
+        downloadCenter.removePrivateDownloads(for: space.profileID)
         spaces.removeAll { $0.id == spaceID }
         profiles.removeAll { $0.id == space.profileID }
         dataStores.removeEphemeralStore(for: space.profileID)
@@ -655,6 +695,19 @@ final class BrowserStore {
             rememberSelectedRegularSpace(selectedSpaceID)
         }
         ensureSelectionAndTab()
+    }
+
+    private func downloadHostTab(for item: BrowserDownloadItem, profileID: ProfileID) -> BrowserTab? {
+        let profileSpaceIDs = Set(spaces.filter { $0.profileID == profileID }.map(\.id))
+        if let original = item.tabID
+            .flatMap({ id in tabs.first(where: { $0.id == id && profileSpaceIDs.contains($0.spaceID) }) }) {
+            return original
+        }
+        if let existing = tabs.first(where: { profileSpaceIDs.contains($0.spaceID) }) {
+            return existing
+        }
+        guard let spaceID = spaces.first(where: { $0.profileID == profileID })?.id else { return nil }
+        return createTab(in: spaceID, activate: false)
     }
 
     private func stagePolicyChange(for profileID: ProfileID) {

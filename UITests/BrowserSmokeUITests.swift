@@ -89,6 +89,20 @@ final class BrowserSmokeUITests: XCTestCase {
     }
 
     @MainActor
+    func testDownloadsTrayIsReachableAndAccessible() throws {
+        let app = launchApp()
+        app.buttons["browser.downloads"].tap()
+
+        XCTAssertTrue(app.navigationBars["Downloads"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["No downloads"].exists)
+        try performAccessibilityAudit(app)
+        if ProcessInfo.processInfo.environment["FIREBALL_CAPTURE_MEDIA"] == "1" {
+            let formFactor = UIDevice.current.userInterfaceIdiom == .pad ? "ipad" : "iphone"
+            capture(app, named: "fireball-\(formFactor)-downloads")
+        }
+    }
+
+    @MainActor
     func testSettingsPassesAccessibilityAudit() throws {
         let app = launchApp()
         app.buttons["browser.settings"].tap()
@@ -129,6 +143,11 @@ final class BrowserSmokeUITests: XCTestCase {
         app.buttons["browser.settings"].tap()
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 3))
         capture(app, named: "fireball-\(formFactor)-settings")
+
+        app.buttons["Done"].tap()
+        app.buttons["browser.downloads"].tap()
+        XCTAssertTrue(app.navigationBars["Downloads"].waitForExistence(timeout: 3))
+        capture(app, named: "fireball-\(formFactor)-downloads")
     }
 
     @MainActor

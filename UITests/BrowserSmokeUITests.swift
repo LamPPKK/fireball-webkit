@@ -40,6 +40,25 @@ final class BrowserSmokeUITests: XCTestCase {
     }
 
     @MainActor
+    func testRegularTabCanBePinnedFromTabGrid() {
+        let app = launchApp()
+        let omnibox = app.textFields["browser.omnibox"]
+        omnibox.tap()
+        omnibox.typeText("https://example.com/pinned")
+        app.buttons["browser.go"].tap()
+        app.buttons["browser.tabs"].tap()
+
+        let pin = app.buttons["tab.pin"]
+        XCTAssertTrue(pin.waitForExistence(timeout: 3))
+        pin.tap()
+
+        let card = app.buttons["tab.card"]
+        XCTAssertTrue(card.waitForExistence(timeout: 3))
+        XCTAssertTrue((card.value as? String)?.contains("Pinned") == true)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Unpin'")).firstMatch.exists)
+    }
+
+    @MainActor
     func testBrowserChromePassesAccessibilityAudit() throws {
         let app = XCUIApplication()
         app.launchEnvironment["FIREBALL_UI_TESTING"] = "1"

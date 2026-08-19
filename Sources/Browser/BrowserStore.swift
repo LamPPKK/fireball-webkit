@@ -125,6 +125,7 @@ final class BrowserStore {
             try await loadContentRules()
             await refreshBlockerRules(force: false)
             ensureSelectionAndTab()
+            _ = archiveStaleTabs(now: .now)
             try persist()
         } catch {
             let fallback = BrowserSnapshot.initial()
@@ -150,7 +151,12 @@ final class BrowserStore {
     }
 
     @discardableResult
-    func createTab(url: URL? = nil, in spaceID: SpaceID? = nil, activate: Bool = true) -> BrowserTab? {
+    func createTab(
+        url: URL? = nil,
+        in spaceID: SpaceID? = nil,
+        activate: Bool = true,
+        pinnedAt: Date? = nil
+    ) -> BrowserTab? {
         guard let space = spaces.first(where: { $0.id == (spaceID ?? selectedSpaceID) }) else { return nil }
         let now = Date.now
         let tab = BrowserTab(
@@ -160,6 +166,7 @@ final class BrowserStore {
             title: url?.host() ?? "New Tab",
             sortIndex: (tabs.filter { $0.spaceID == space.id }.map(\.sortIndex).max() ?? -1) + 1,
             lastActiveAt: now,
+            pinnedAt: pinnedAt,
             storageMode: space.storageMode,
             modifiedAt: now
         )
@@ -192,7 +199,7 @@ final class BrowserStore {
 
     func closeTab(_ tabID: TabID) {
         guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
-        archiveTabIfEligible(tab)
+        archiveTabIfEligible(tab, now: .now)
         sessions.removeValue(forKey: tabID)?.webView.stopLoading()
         thumbnails.removeValue(forKey: tabID)
         tabs.removeAll { $0.id == tabID }
@@ -209,6 +216,19 @@ final class BrowserStore {
                 _ = createTab(in: tab.spaceID)
             }
         }
+        tryPersist()
+    }
+
+    func togglePinned(_ tabID: TabID) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }), tabs[index].url != nil else { return }
+        let now = Date.now
+        if tabs[index].pinnedAt == nil {
+            tabs[index].pinnedAt = now
+        } else {
+            tabs[index].pinnedAt = nil
+            tabs[index].lastActiveAt = now
+        }
+        tabs[index].modifiedAt = now
         tryPersist()
     }
 
@@ -357,7 +377,7 @@ final class BrowserStore {
         guard let destination else { return nil }
 
         archivedTabs.removeAll { $0.id == archivedTabID }
-        guard let restored = createTab(url: archived.url, in: destination.id) else {
+        guard let restored = createTab(url: archived.url, in: destination.id, pinnedAt: archived.pinnedAt) else {
             archivedTabs.append(archived)
             return nil
         }
@@ -401,6 +421,22 @@ final class BrowserStore {
         settings.historySyncEnabled = enabled
         settings.modifiedAt = .now
         tryPersist()
+    }
+
+    func setAutomaticArchiveInterval(_ interval: AutomaticArchiveInterval?) {
+        settings.automaticArchiveInterval = interval
+        settings.modifiedAt = .now
+        _ = archiveStaleTabs(now: .now)
+        tryPersist()
+    }
+
+    @discardableResult
+    func performAutomaticArchive(now: Date = .now) -> [TabID] {
+        let archived = archiveStaleTabs(now: now)
+        if !archived.isEmpty {
+            tryPersist()
+        }
+        return archived
     }
 
     func updateSearchProvider(_ provider: SearchProvider, for profileID: ProfileID) {
@@ -586,6 +622,9 @@ final class BrowserStore {
             purgeExpiredArchive(now: .now)
             syncStatus = repository.syncStatus
             ensureSelectionAndTab()
+            if !archiveStaleTabs(now: .now).isEmpty {
+                tryPersist()
+            }
         } catch {
             syncStatus = .degraded(error.localizedDescription)
         }
@@ -688,15 +727,15 @@ final class BrowserStore {
         history.removeAll { $0.visitedAt < cutoff }
     }
 
-    private func archiveTabIfEligible(_ tab: BrowserTab) {
+    @discardableResult
+    private func archiveTabIfEligible(_ tab: BrowserTab, now: Date) -> Bool {
         guard tab.storageMode == .persistent,
               let url = tab.url,
               let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https",
               let space = spaces.first(where: { $0.id == tab.spaceID && $0.storageMode == .persistent }),
               let profile = profiles.first(where: { $0.id == space.profileID && $0.storageMode == .persistent }),
-              URLPolicy(searchProvider: profile.searchProvider).allowsNavigation(to: url) else { return }
-        let now = Date.now
+              URLPolicy(searchProvider: profile.searchProvider).allowsNavigation(to: url) else { return false }
         archivedTabs.append(
             ArchivedTab(
                 id: ArchivedTabID(),
@@ -705,10 +744,42 @@ final class BrowserStore {
                 url: url,
                 title: String((tab.title.isEmpty ? url.host() ?? url.absoluteString : tab.title).prefix(256)),
                 archivedAt: now,
+                pinnedAt: tab.pinnedAt,
                 modifiedAt: now
             )
         )
         purgeExpiredArchive(now: now)
+        return true
+    }
+
+    private func archiveStaleTabs(now: Date) -> [TabID] {
+        guard let interval = settings.automaticArchiveInterval else { return [] }
+        let cutoff = now.addingTimeInterval(-interval.timeInterval)
+        var protectedTabIDs: Set<TabID> = []
+        if let selectedTabID {
+            protectedTabIDs.insert(selectedTabID)
+        }
+        let candidates = tabs.filter { tab in
+            tab.storageMode == .persistent
+                && tab.pinnedAt == nil
+                && tab.lastActiveAt <= cutoff
+                && !protectedTabIDs.contains(tab.id)
+        }
+        var archivedIDs: [TabID] = []
+        for tab in candidates where archiveTabIfEligible(tab, now: now) {
+            sessions.removeValue(forKey: tab.id)?.webView.stopLoading()
+            thumbnails.removeValue(forKey: tab.id)
+            archivedIDs.append(tab.id)
+        }
+        guard !archivedIDs.isEmpty else { return [] }
+        let archivedIDSet = Set(archivedIDs)
+        tabs.removeAll { archivedIDSet.contains($0.id) }
+        for index in spaces.indices {
+            guard let selected = spaces[index].selectedTabID, archivedIDSet.contains(selected) else { continue }
+            spaces[index].selectedTabID = sorted(tabs.filter { $0.spaceID == spaces[index].id }).last?.id
+            spaces[index].modifiedAt = now
+        }
+        return archivedIDs
     }
 
     private func purgeExpiredArchive(now: Date) {
@@ -846,6 +917,12 @@ final class BrowserStore {
 
     private func sorted(_ tabs: [BrowserTab]) -> [BrowserTab] {
         tabs.sorted { lhs, rhs in
+            if lhs.isPinned != rhs.isPinned {
+                return lhs.isPinned
+            }
+            if let lhsPinned = lhs.pinnedAt, let rhsPinned = rhs.pinnedAt, lhsPinned != rhsPinned {
+                return lhsPinned < rhsPinned
+            }
             if lhs.sortIndex == rhs.sortIndex {
                 return lhs.id.rawValue.uuidString < rhs.id.rawValue.uuidString
             }

@@ -14,6 +14,7 @@ struct SettingsView: View {
                     LazyVStack(spacing: 22) {
                         profileSection
                         privacySection
+                        tabsSection
                         syncSection
                         aboutSection
                     }
@@ -54,7 +55,7 @@ struct SettingsView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Fireball will remove the profile's tabs, bookmarks, history, Keychain lock and local WebKit website data.")
+                Text("Fireball will remove the profile's tabs, Archive entries, bookmarks, history, Keychain lock and local WebKit website data.")
             }
         }
         .preferredColorScheme(.dark)
@@ -141,7 +142,7 @@ struct SettingsView: View {
     }
 
     private var syncSection: some View {
-        settingsSection("iCloud private database", index: "03") {
+        settingsSection("iCloud private database", index: "04") {
             settingsValue("Status", value: store.syncStatus.label)
             Text(store.syncStatus.detail)
                 .font(.body)
@@ -157,15 +158,35 @@ struct SettingsView: View {
                     showHistoryConsent = true
                 }
             }
-            Text("Profiles, spaces, regular tabs and bookmarks sync when iCloud is available. History is opt-in and retained for 90 days.")
+            Text("Profiles, spaces, regular tabs, Archive metadata and bookmarks sync when iCloud is available. History is opt-in and retained for 90 days.")
                 .font(.body)
                 .foregroundStyle(Color.fireballMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
+    private var tabsSection: some View {
+        settingsSection("Tab lifecycle", index: "03") {
+            Picker("Automatic Archive", selection: automaticArchiveBinding) {
+                Text("Off").tag(AutomaticArchiveInterval?.none)
+                ForEach(AutomaticArchiveInterval.allCases, id: \.self) { interval in
+                    Text(interval.displayName).tag(Optional(interval))
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .accessibilityIdentifier("settings.auto-archive")
+
+            Text("Inactive regular tabs move to Archive on launch or when Fireball enters the background. Active, pinned, Home and private tabs are never moved automatically.")
+                .font(.body)
+                .foregroundStyle(Color.fireballMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            settingsValue("Archive retention", value: "30 days / 200 tabs per profile")
+        }
+    }
+
     private var aboutSection: some View {
-        settingsSection("About", index: "04") {
+        settingsSection("About", index: "05") {
             settingsValue("Application", value: "Fireball Browser")
             settingsValue("Version", value: "0.1.0")
             settingsLink(
@@ -260,6 +281,13 @@ struct SettingsView: View {
             set: { enabled in
                 Task { await store.setBiometricLockEnabled(enabled, for: profile.id) }
             }
+        )
+    }
+
+    private var automaticArchiveBinding: Binding<AutomaticArchiveInterval?> {
+        Binding(
+            get: { store.settings.automaticArchiveInterval },
+            set: { store.setAutomaticArchiveInterval($0) }
         )
     }
 }

@@ -79,6 +79,24 @@ enum SearchProvider: String, CaseIterable, Codable, Sendable {
     }
 }
 
+enum AutomaticArchiveInterval: Int, CaseIterable, Codable, Sendable {
+    case oneDay = 1
+    case sevenDays = 7
+    case thirtyDays = 30
+
+    var displayName: String {
+        switch self {
+        case .oneDay: "After 1 day"
+        case .sevenDays: "After 7 days"
+        case .thirtyDays: "After 30 days"
+        }
+    }
+
+    var timeInterval: TimeInterval {
+        TimeInterval(rawValue) * 24 * 60 * 60
+    }
+}
+
 enum ExtensionSource: String, Codable, Sendable {
     case contentRuleList = "content_rule_list"
 }
@@ -142,10 +160,12 @@ struct BrowserTab: Identifiable, Hashable, Codable, Sendable {
     var title: String
     var sortIndex: Double
     var lastActiveAt: Date
+    var pinnedAt: Date? = nil
     let storageMode: StorageMode
     var modifiedAt: Date
 
     var isPrivate: Bool { storageMode == .ephemeral }
+    var isPinned: Bool { pinnedAt != nil }
 }
 
 struct ArchivedTab: Identifiable, Hashable, Codable, Sendable {
@@ -155,6 +175,7 @@ struct ArchivedTab: Identifiable, Hashable, Codable, Sendable {
     let url: URL
     var title: String
     let archivedAt: Date
+    var pinnedAt: Date? = nil
     var modifiedAt: Date
 }
 
@@ -179,6 +200,7 @@ struct HistoryVisit: Identifiable, Hashable, Codable, Sendable {
 struct BrowserSettings: Hashable, Codable, Sendable {
     var historySyncEnabled = false
     var lastSelectedSpaceID: SpaceID?
+    var automaticArchiveInterval: AutomaticArchiveInterval? = .sevenDays
     var modifiedAt = Date.now
 }
 

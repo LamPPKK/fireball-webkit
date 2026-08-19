@@ -34,6 +34,8 @@ Record pass/fail, device model, OS version, build number, tester, and evidence l
 | iPhone install/launch | Installs from TestFlight and reaches native home on iOS 18+ |
 | iPad install/launch | Installs from TestFlight and adaptive sidebar/grid is usable on iPadOS 18+ |
 | Two-device iCloud | Regular profiles, spaces, tabs, 30-day archived-tab metadata, bookmarks, and settings converge |
+| Pinned tabs | Pin state persists and syncs, pinned tabs sort first, and automatic Archive never moves them |
+| Automatic Archive | Off/1/7/30-day policies move only inactive regular background tabs; active, pinned, Home, and private tabs remain open |
 | Cookie boundary | Website cookies do not appear in another profile or another device through Fireball sync |
 | Private boundary | Private tabs, private Archive entries, history, snapshots, and restore state do not appear after relaunch or on device two |
 | History opt-in | URL sync starts only after the disclosure is accepted; records older than 90 days disappear |

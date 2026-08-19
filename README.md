@@ -48,7 +48,8 @@ not a substitute for physical-device or TestFlight acceptance.
 - A profile owns one persistent `WKWebsiteDataStore(forIdentifier:)`; multiple spaces may share that profile.
 - A private space uses `WKWebsiteDataStore.nonPersistent()` and never persists tabs, history, or snapshots.
 - Adaptive iPhone tab grid and iPad sidebar/grid, swipe-to-close, popup-to-tab handling, native home, bookmarks, and history.
-- Arc-inspired Archive: closing a regular web tab keeps bounded URL/title metadata for 30 days (up to 200 entries per profile), with one-tap restore from Library. Home and private tabs never enter Archive.
+- Arc-style pinned tabs sort ahead of regular tabs and are protected from automatic Archive. Pin state follows the tab through regular persistence and iCloud metadata sync; private pin state remains memory-only.
+- Arc-inspired Archive: closing a regular web tab keeps bounded URL/title metadata for 30 days (up to 200 entries per profile), with one-tap restore from Library. Automatic Archive can be disabled or set to 1, 7, or 30 inactive days; active, pinned, Home, and private tabs are never moved automatically.
 - Regular tab restoration after relaunch and LRU release of background WebViews under memory pressure.
 
 ### Browsing and resilience

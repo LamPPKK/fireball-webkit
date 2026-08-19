@@ -35,4 +35,44 @@ final class BrowserModelsTests: XCTestCase {
         XCTAssertNotEqual(first.id, second.id)
         XCTAssertEqual(first.profileID, second.profileID)
     }
+
+    func testLegacyTabAndSettingsPayloadsDecodeWithoutPinOrAutomaticArchiveFields() throws {
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+        let tab = BrowserTab(
+            id: TabID(),
+            spaceID: SpaceID(),
+            url: try XCTUnwrap(URL(string: "https://legacy.example")),
+            title: "Legacy",
+            sortIndex: 0,
+            lastActiveAt: .now,
+            pinnedAt: .now,
+            storageMode: .persistent,
+            modifiedAt: .now
+        )
+        var tabObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoder.encode(tab)) as? [String: Any]
+        )
+        tabObject.removeValue(forKey: "pinnedAt")
+
+        let decodedTab = try decoder.decode(
+            BrowserTab.self,
+            from: JSONSerialization.data(withJSONObject: tabObject)
+        )
+
+        XCTAssertNil(decodedTab.pinnedAt)
+        XCTAssertFalse(decodedTab.isPinned)
+
+        var settingsObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoder.encode(BrowserSettings())) as? [String: Any]
+        )
+        settingsObject.removeValue(forKey: "automaticArchiveInterval")
+
+        let decodedSettings = try decoder.decode(
+            BrowserSettings.self,
+            from: JSONSerialization.data(withJSONObject: settingsObject)
+        )
+
+        XCTAssertNil(decodedSettings.automaticArchiveInterval)
+    }
 }

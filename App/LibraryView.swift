@@ -166,10 +166,18 @@ struct LibraryView: View {
                                 isPresented = false
                             }
                         } label: {
-                            libraryRowLabel(title: archived.title, url: archived.url, icon: "arrow.uturn.backward.circle.fill")
+                            libraryRowLabel(
+                                title: archived.title,
+                                url: archived.url,
+                                icon: archived.pinnedAt == nil ? "arrow.uturn.backward.circle.fill" : "pin.fill"
+                            )
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Restore \(archived.title)")
+                        .accessibilityLabel(
+                            archived.pinnedAt == nil
+                                ? "Restore \(archived.title)"
+                                : "Restore pinned \(archived.title)"
+                        )
                         .accessibilityIdentifier("library.archive.restore")
                         .swipeActions {
                             Button("Delete", role: .destructive) { store.removeArchivedTab(archived.id) }

@@ -53,4 +53,31 @@ final class SessionRestorationTests: XCTestCase {
 
         XCTAssertEqual(SessionRestoration().restorableTabs(from: [second, first]), [first, second])
     }
+
+    func testPinnedTabsRestoreBeforeRegularTabs() throws {
+        let spaceID = SpaceID()
+        let regular = BrowserTab(
+            id: TabID(),
+            spaceID: spaceID,
+            url: try XCTUnwrap(URL(string: "https://regular.example")),
+            title: "Regular",
+            sortIndex: 0,
+            lastActiveAt: .now,
+            storageMode: .persistent,
+            modifiedAt: .now
+        )
+        let pinned = BrowserTab(
+            id: TabID(),
+            spaceID: spaceID,
+            url: try XCTUnwrap(URL(string: "https://pinned.example")),
+            title: "Pinned",
+            sortIndex: 99,
+            lastActiveAt: .now,
+            pinnedAt: .now,
+            storageMode: .persistent,
+            modifiedAt: .now
+        )
+
+        XCTAssertEqual(SessionRestoration().restorableTabs(from: [regular, pinned]), [pinned, regular])
+    }
 }

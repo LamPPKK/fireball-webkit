@@ -155,6 +155,9 @@ struct TabGridView: View {
                 store.activateTab(tab.id)
                 isPresented = false
             },
+            onTogglePin: {
+                store.togglePinned(tab.id)
+            },
             onClose: {
                 store.closeTab(tab.id)
             }
@@ -199,6 +202,7 @@ private struct SwipeClosableTabCard: View {
     let thumbnail: UIImage?
     let isSelected: Bool
     let onOpen: () -> Void
+    let onTogglePin: () -> Void
     let onClose: () -> Void
 
     @State private var dragOffset = 0.0
@@ -244,7 +248,7 @@ private struct SwipeClosableTabCard: View {
                         .frame(height: 144)
 
                         VStack(alignment: .leading, spacing: 7) {
-                            Text(isSelected ? "ACTIVE" : tab.isPrivate ? "PRIVATE" : "BACKGROUND")
+                            Text(isSelected ? "ACTIVE" : tab.isPinned ? "PINNED" : tab.isPrivate ? "PRIVATE" : "BACKGROUND")
                                 .font(.caption.monospaced().weight(.black))
                                 .foregroundStyle(isSelected ? Color.fireballBackground : Color.fireballCream)
                                 .padding(.horizontal, 9)
@@ -273,20 +277,40 @@ private struct SwipeClosableTabCard: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(tab.title), \(tab.url?.host() ?? "Fireball home")")
-                .accessibilityValue(isSelected ? "Active tab" : tab.isPrivate ? "Private tab" : "Background tab")
-                .accessibilityHint("Double-tap to open. Swipe left to close.")
+                .accessibilityValue(accessibilityState)
+                .accessibilityHint("Double-tap to open. Swipe left to close. Pinned tabs are protected from automatic Archive.")
                 .accessibilityIdentifier("tab.card")
-                .accessibilityAction(named: "Close tab") { onClose() }
-
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .frame(width: 44, height: 44)
-                        .background(.black.opacity(0.58), in: Circle())
+                .accessibilityActions {
+                    if tab.url != nil {
+                        Button(tab.isPinned ? "Unpin tab" : "Pin tab", action: onTogglePin)
+                    }
+                    Button("Close tab", action: onClose)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close \(tab.title)")
-                .accessibilityIdentifier("tab.close")
+
+                HStack(spacing: 2) {
+                    if tab.url != nil {
+                        Button(action: onTogglePin) {
+                            Image(systemName: tab.isPinned ? "pin.fill" : "pin")
+                                .font(.system(size: 12, weight: .bold))
+                                .frame(width: 44, height: 44)
+                                .background(.black.opacity(0.58), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(tab.isPinned ? Color.fireballGreen : Color.fireballCream)
+                        .accessibilityLabel(tab.isPinned ? "Unpin \(tab.title)" : "Pin \(tab.title)")
+                        .accessibilityIdentifier("tab.pin")
+                    }
+
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .frame(width: 44, height: 44)
+                            .background(.black.opacity(0.58), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Close \(tab.title)")
+                    .accessibilityIdentifier("tab.close")
+                }
                 .padding(4)
             }
             .offset(x: dragOffset)
@@ -309,5 +333,14 @@ private struct SwipeClosableTabCard: View {
                     }
                 }
         )
+    }
+
+    private var accessibilityState: String {
+        var states: [String] = []
+        if isSelected { states.append("Active") }
+        if tab.isPrivate { states.append("Private") }
+        if tab.isPinned { states.append("Pinned") }
+        if states.isEmpty { states.append("Background") }
+        return states.map { "\($0) tab" }.joined(separator: ", ")
     }
 }

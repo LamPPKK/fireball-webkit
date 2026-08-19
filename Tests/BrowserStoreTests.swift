@@ -181,6 +181,90 @@ final class BrowserStoreTests: XCTestCase {
         XCTAssertTrue(oldestIDs.isDisjoint(with: Set(store.archivedTabs.map(\.id))))
     }
 
+    func testPinnedTabSortsFirstAndRestoresPinnedIntentFromArchive() async throws {
+        let repository = InMemoryBrowserRepository(snapshot: .initial())
+        let store = makeStore(repository: repository)
+        await store.bootstrap()
+        let first = try XCTUnwrap(store.createTab(url: URL(string: "https://first.example")))
+        let pinned = try XCTUnwrap(store.createTab(url: URL(string: "https://pinned.example")))
+
+        store.togglePinned(pinned.id)
+
+        XCTAssertEqual(store.tabsInSelectedSpace.first?.id, pinned.id)
+        XCTAssertTrue(store.tabs.first(where: { $0.id == pinned.id })?.isPinned == true)
+        store.closeTab(pinned.id)
+        let archived = try XCTUnwrap(store.archivedTabs.first(where: { $0.url == pinned.url }))
+        XCTAssertNotNil(archived.pinnedAt)
+
+        let restored = try XCTUnwrap(store.restoreArchivedTab(archived.id))
+
+        XCTAssertTrue(restored.isPinned)
+        XCTAssertEqual(store.tabsInSelectedSpace.first?.id, restored.id)
+        XCTAssertTrue(store.tabs.contains { $0.id == first.id })
+        let persisted = try await repository.load()
+        XCTAssertTrue(persisted.tabs.contains { $0.id == restored.id && $0.isPinned })
+    }
+
+    func testAutomaticArchiveMovesOnlyStaleUnpinnedBackgroundTabs() async throws {
+        let repository = InMemoryBrowserRepository(snapshot: .initial())
+        let store = makeStore(repository: repository)
+        await store.bootstrap()
+        store.setAutomaticArchiveInterval(nil)
+        let active = try XCTUnwrap(store.createTab(url: URL(string: "https://active.example")))
+        let stale = try XCTUnwrap(store.createTab(url: URL(string: "https://stale.example"), activate: false))
+        let pinned = try XCTUnwrap(store.createTab(url: URL(string: "https://pinned.example"), activate: false))
+        store.togglePinned(pinned.id)
+        let oldDate = Date.now.addingTimeInterval(-8 * 24 * 60 * 60)
+        store.tabs[try XCTUnwrap(store.tabs.firstIndex(where: { $0.id == active.id }))].lastActiveAt = oldDate
+        store.tabs[try XCTUnwrap(store.tabs.firstIndex(where: { $0.id == stale.id }))].lastActiveAt = oldDate
+        store.tabs[try XCTUnwrap(store.tabs.firstIndex(where: { $0.id == pinned.id }))].lastActiveAt = oldDate
+
+        store.setAutomaticArchiveInterval(.sevenDays)
+
+        XCTAssertTrue(store.tabs.contains { $0.id == active.id })
+        XCTAssertFalse(store.tabs.contains { $0.id == stale.id })
+        XCTAssertTrue(store.tabs.contains { $0.id == pinned.id })
+        XCTAssertEqual(store.archivedTabs.first(where: { $0.url == stale.url })?.sourceSpaceID, stale.spaceID)
+        XCTAssertFalse(store.archivedTabs.contains { $0.url == active.url || $0.url == pinned.url })
+    }
+
+    func testAutomaticArchiveOffLeavesStaleTabOpen() async throws {
+        let store = makeStore(repository: InMemoryBrowserRepository(snapshot: .initial()))
+        await store.bootstrap()
+        store.setAutomaticArchiveInterval(nil)
+        let stale = try XCTUnwrap(store.createTab(url: URL(string: "https://stale.example"), activate: false))
+        store.tabs[try XCTUnwrap(store.tabs.firstIndex(where: { $0.id == stale.id }))].lastActiveAt =
+            Date.now.addingTimeInterval(-31 * 24 * 60 * 60)
+
+        let archived = store.performAutomaticArchive()
+
+        XCTAssertTrue(archived.isEmpty)
+        XCTAssertTrue(store.tabs.contains { $0.id == stale.id })
+        XCTAssertTrue(store.archivedTabs.isEmpty)
+    }
+
+    func testAutomaticArchiveRepairsSelectionInInactiveSpace() async throws {
+        let store = makeStore(repository: InMemoryBrowserRepository(snapshot: .initial()))
+        await store.bootstrap()
+        store.setAutomaticArchiveInterval(nil)
+        let mainSpaceID = try XCTUnwrap(store.selectedSpaceID)
+        let profileID = try XCTUnwrap(store.activeProfile?.id)
+        store.createSpace(name: "Research", profileID: profileID)
+        let researchSpaceID = try XCTUnwrap(store.selectedSpaceID)
+        let stale = try XCTUnwrap(store.createTab(url: URL(string: "https://stale.example")))
+        await store.selectSpace(mainSpaceID)
+        store.tabs[try XCTUnwrap(store.tabs.firstIndex(where: { $0.id == stale.id }))].lastActiveAt =
+            Date.now.addingTimeInterval(-8 * 24 * 60 * 60)
+
+        store.setAutomaticArchiveInterval(.sevenDays)
+
+        XCTAssertFalse(store.tabs.contains { $0.id == stale.id })
+        let repairedSelection = store.spaces.first(where: { $0.id == researchSpaceID })?.selectedTabID
+        XCTAssertNotEqual(repairedSelection, stale.id)
+        XCTAssertTrue(store.tabs.contains { $0.id == repairedSelection })
+        XCTAssertEqual(store.selectedSpaceID, mainSpaceID)
+    }
+
     func testBlockerChangeIsStagedWithoutReloadingActiveWebView() async throws {
         let store = makeStore(repository: InMemoryBrowserRepository(snapshot: .initial()))
         await store.bootstrap()

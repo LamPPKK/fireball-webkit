@@ -28,7 +28,10 @@ struct FireballWebKitApp: App {
                     switch phase {
                     case .active:
                         Task { await store.revealAfterForeground() }
-                    case .inactive, .background:
+                    case .inactive:
+                        store.lockProtectedContent()
+                    case .background:
+                        store.performAutomaticArchive()
                         store.lockProtectedContent()
                     @unknown default:
                         store.lockProtectedContent()

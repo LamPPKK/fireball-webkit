@@ -44,10 +44,11 @@ not a substitute for physical-device or TestFlight acceptance.
 
 ### Profiles, spaces, and tabs
 
-- Stable UUIDs for profiles, spaces, tabs, bookmarks, and history visits.
+- Stable UUIDs for profiles, spaces, tabs, archived tabs, bookmarks, and history visits.
 - A profile owns one persistent `WKWebsiteDataStore(forIdentifier:)`; multiple spaces may share that profile.
 - A private space uses `WKWebsiteDataStore.nonPersistent()` and never persists tabs, history, or snapshots.
 - Adaptive iPhone tab grid and iPad sidebar/grid, swipe-to-close, popup-to-tab handling, native home, bookmarks, and history.
+- Arc-inspired Archive: closing a regular web tab keeps bounded URL/title metadata for 30 days (up to 200 entries per profile), with one-tap restore from Library. Home and private tabs never enter Archive.
 - Regular tab restoration after relaunch and LRU release of background WebViews under memory pressure.
 
 ### Browsing and resilience
@@ -68,7 +69,7 @@ not a substitute for physical-device or TestFlight acceptance.
 ### Privacy and sync
 
 - Private CloudKit metadata sync through `NSPersistentCloudKitContainer` with a local replica, last-writer-wins UUID conflict handling, and 30-day tombstones.
-- Profiles, spaces, regular tabs, bookmarks, and settings may sync; cookies, cache, credentials, biometric state, snapshots, and private tabs never do.
+- Profiles, spaces, regular tabs, regular-tab Archive metadata, bookmarks, and settings may sync; cookies, cache, credentials, biometric state, snapshots, and private tabs never do.
 - History sync is opt-in, disclosed before enabling, and limited to 90 days.
 - Per-profile signed content-blocker policy with last-known-good rollback.
 - Optional profile lock through Keychain and LocalAuthentication, private-space foreground lock, and an app-switcher privacy cover.

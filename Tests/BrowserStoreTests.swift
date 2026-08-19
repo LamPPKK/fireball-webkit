@@ -87,6 +87,100 @@ final class BrowserStoreTests: XCTestCase {
         XCTAssertTrue(store.isSessionLoaded(for: active.id))
     }
 
+    func testClosingRegularWebTabArchivesAndRestoresIt() async throws {
+        let repository = InMemoryBrowserRepository(snapshot: .initial())
+        let store = makeStore(repository: repository)
+        await store.bootstrap()
+        let url = try XCTUnwrap(URL(string: "https://archive.example/article"))
+        let closed = try XCTUnwrap(store.createTab(url: url))
+
+        store.closeTab(closed.id)
+
+        let archived = try XCTUnwrap(store.archivedTabs.first)
+        XCTAssertEqual(archived.url, url)
+        XCTAssertEqual(archived.profileID, store.activeProfile?.id)
+        XCTAssertFalse(store.tabs.contains { $0.id == closed.id })
+
+        let restored = try XCTUnwrap(store.restoreArchivedTab(archived.id))
+
+        XCTAssertEqual(restored.url, url)
+        XCTAssertEqual(store.selectedTabID, restored.id)
+        XCTAssertTrue(store.archivedTabs.isEmpty)
+        XCTAssertNotEqual(restored.id, closed.id)
+        let persisted = try await repository.load()
+        XCTAssertTrue(persisted.tabs.map(\.id).contains(restored.id))
+    }
+
+    func testPrivateAndHomeTabsNeverEnterArchive() async throws {
+        let store = makeStore(repository: InMemoryBrowserRepository(snapshot: .initial()))
+        await store.bootstrap()
+        let homeID = try XCTUnwrap(store.activeTab?.id)
+        store.closeTab(homeID)
+        XCTAssertTrue(store.archivedTabs.isEmpty)
+
+        let blank = try XCTUnwrap(store.createTab(url: URL(string: "about:blank")))
+        store.closeTab(blank.id)
+        XCTAssertTrue(store.archivedTabs.isEmpty)
+
+        store.createPrivateSpace()
+        let privateTab = try XCTUnwrap(
+            store.createTab(url: URL(string: "https://private.example/secret"))
+        )
+        store.closeTab(privateTab.id)
+
+        XCTAssertTrue(store.archivedTabs.isEmpty)
+    }
+
+    func testArchiveDropsEntriesOlderThanThirtyDays() async throws {
+        var snapshot = BrowserSnapshot.initial()
+        let profile = try XCTUnwrap(snapshot.profiles.first)
+        let space = try XCTUnwrap(snapshot.spaces.first)
+        let oldDate = Date.now.addingTimeInterval(-31 * 24 * 60 * 60)
+        snapshot.archivedTabs = [
+            ArchivedTab(
+                id: ArchivedTabID(),
+                profileID: profile.id,
+                sourceSpaceID: space.id,
+                url: try XCTUnwrap(URL(string: "https://expired.example")),
+                title: "Expired",
+                archivedAt: oldDate,
+                modifiedAt: oldDate
+            ),
+        ]
+        let store = makeStore(repository: InMemoryBrowserRepository(snapshot: snapshot))
+
+        await store.bootstrap()
+
+        XCTAssertTrue(store.archivedTabs.isEmpty)
+    }
+
+    func testArchiveKeepsOnlyTwoHundredNewestEntriesPerProfile() async throws {
+        var snapshot = BrowserSnapshot.initial()
+        let profile = try XCTUnwrap(snapshot.profiles.first)
+        let space = try XCTUnwrap(snapshot.spaces.first)
+        let now = Date.now
+        snapshot.archivedTabs = try (0 ..< 205).map { index in
+            ArchivedTab(
+                id: ArchivedTabID(),
+                profileID: profile.id,
+                sourceSpaceID: space.id,
+                url: try XCTUnwrap(URL(string: "https://archive.example/\(index)")),
+                title: "Archive \(index)",
+                archivedAt: now.addingTimeInterval(TimeInterval(-index)),
+                modifiedAt: now.addingTimeInterval(TimeInterval(-index))
+            )
+        }
+        let newestID = try XCTUnwrap(snapshot.archivedTabs.first?.id)
+        let oldestIDs = Set(snapshot.archivedTabs.suffix(5).map(\.id))
+        let store = makeStore(repository: InMemoryBrowserRepository(snapshot: snapshot))
+
+        await store.bootstrap()
+
+        XCTAssertEqual(store.archivedTabs.count, 200)
+        XCTAssertTrue(store.archivedTabs.contains { $0.id == newestID })
+        XCTAssertTrue(oldestIDs.isDisjoint(with: Set(store.archivedTabs.map(\.id))))
+    }
+
     func testBlockerChangeIsStagedWithoutReloadingActiveWebView() async throws {
         let store = makeStore(repository: InMemoryBrowserRepository(snapshot: .initial()))
         await store.bootstrap()

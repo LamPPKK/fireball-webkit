@@ -4,6 +4,7 @@ struct LibraryView: View {
     enum Section: String, CaseIterable, Identifiable {
         case bookmarks = "Bookmarks"
         case history = "History"
+        case archive = "Archive"
         var id: String { rawValue }
     }
 
@@ -21,67 +22,97 @@ struct LibraryView: View {
         return store.history.filter { $0.profileID == profileID }
     }
 
+    private var profileArchivedTabs: [ArchivedTab] {
+        guard let profileID = store.activeProfile?.id else { return [] }
+        return store.archivedTabs.filter { $0.profileID == profileID }
+    }
+
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.fireballBackground.ignoresSafeArea()
-                VStack(spacing: 0) {
-                    Picker("Library section", selection: $section) {
-                        ForEach(Section.allCases) { section in
-                            Text(section.rawValue).tag(section)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(16)
-
-                    if section == .bookmarks {
-                        bookmarksList
-                    } else {
-                        historyList
-                    }
-                }
-            }
+            libraryContent
             .navigationTitle("Library")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if section == .bookmarks, canToggleActiveBookmark {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            store.toggleBookmarkForActiveTab()
-                        } label: {
-                            Image(
-                                systemName: store.isBookmarked(store.activeTab?.url)
-                                    ? "bookmark.slash"
-                                    : "bookmark"
-                            )
-                            .frame(width: 44, height: 44)
-                        }
-                        .accessibilityLabel(
-                            store.isBookmarked(store.activeTab?.url)
-                                ? "Remove current bookmark"
-                                : "Bookmark current page"
-                        )
-                        .accessibilityIdentifier("library.bookmark-toggle")
-                    }
-                } else if section == .history && !profileHistory.isEmpty {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Clear", role: .destructive) {
-                            if let profileID = store.activeProfile?.id {
-                                store.clearHistory(for: profileID)
-                            }
-                        }
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button { isPresented = false } label: {
-                        Image(systemName: "xmark")
-                            .frame(width: 44, height: 44)
-                    }
-                    .accessibilityLabel("Done")
-                }
-            }
+            .toolbar { libraryToolbar }
         }
         .preferredColorScheme(.dark)
+    }
+
+    private var libraryContent: some View {
+        ZStack {
+            Color.fireballBackground.ignoresSafeArea()
+            VStack(spacing: 0) {
+                Picker("Library section", selection: $section) {
+                    ForEach(Section.allCases) { section in
+                        Text(section.rawValue).tag(section)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(16)
+
+                sectionContent
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var sectionContent: some View {
+        switch section {
+        case .bookmarks:
+            bookmarksList
+        case .history:
+            historyList
+        case .archive:
+            archiveList
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var libraryToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            leadingToolbarButton
+        }
+        ToolbarItem(placement: .confirmationAction) {
+            Button { isPresented = false } label: {
+                Image(systemName: "xmark")
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("Done")
+        }
+    }
+
+    private var leadingToolbarButton: AnyView {
+        if section == .bookmarks, canToggleActiveBookmark {
+            let removing = store.isBookmarked(store.activeTab?.url)
+            return AnyView(
+                Button {
+                    store.toggleBookmarkForActiveTab()
+                } label: {
+                    Image(systemName: removing ? "bookmark.slash" : "bookmark")
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel(removing ? "Remove current bookmark" : "Bookmark current page")
+                .accessibilityIdentifier("library.bookmark-toggle")
+            )
+        }
+        if section == .history, !profileHistory.isEmpty {
+            return AnyView(
+                Button("Clear", role: .destructive) {
+                    if let profileID = store.activeProfile?.id {
+                        store.clearHistory(for: profileID)
+                    }
+                }
+            )
+        }
+        if section == .archive, !profileArchivedTabs.isEmpty {
+            return AnyView(
+                Button("Clear", role: .destructive) {
+                    if let profileID = store.activeProfile?.id {
+                        store.clearArchivedTabs(for: profileID)
+                    }
+                }
+            )
+        }
+        return AnyView(EmptyView())
     }
 
     private var canToggleActiveBookmark: Bool {
@@ -95,7 +126,7 @@ struct LibraryView: View {
             } else {
                 List {
                     ForEach(profileBookmarks) { bookmark in
-                        libraryRow(title: bookmark.title, url: bookmark.url, icon: "bookmark.fill")
+                        navigationRow(title: bookmark.title, url: bookmark.url, icon: "bookmark.fill")
                             .swipeActions {
                                 Button("Delete", role: .destructive) { store.removeBookmark(bookmark.id) }
                             }
@@ -112,37 +143,76 @@ struct LibraryView: View {
                 emptyState("No regular history", icon: "clock")
             } else {
                 List(profileHistory) { visit in
-                    libraryRow(title: visit.title, url: visit.url, icon: "clock.arrow.circlepath")
+                    navigationRow(title: visit.title, url: visit.url, icon: "clock.arrow.circlepath")
                 }
                 .scrollContentBackground(.hidden)
             }
         }
     }
 
-    private func libraryRow(title: String, url: URL, icon: String) -> some View {
+    private var archiveList: some View {
+        Group {
+            if profileArchivedTabs.isEmpty {
+                emptyState(
+                    "No archived tabs",
+                    icon: "archivebox",
+                    description: "Closed regular tabs stay here for 30 days. Private tabs are never archived."
+                )
+            } else {
+                List {
+                    ForEach(profileArchivedTabs) { archived in
+                        Button {
+                            if store.restoreArchivedTab(archived.id) != nil {
+                                isPresented = false
+                            }
+                        } label: {
+                            libraryRowLabel(title: archived.title, url: archived.url, icon: "arrow.uturn.backward.circle.fill")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Restore \(archived.title)")
+                        .accessibilityIdentifier("library.archive.restore")
+                        .swipeActions {
+                            Button("Delete", role: .destructive) { store.removeArchivedTab(archived.id) }
+                        }
+                    }
+                }
+                .scrollContentBackground(.hidden)
+            }
+        }
+    }
+
+    private func navigationRow(title: String, url: URL, icon: String) -> some View {
         Button {
             try? store.navigate(url.absoluteString)
             isPresented = false
         } label: {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .foregroundStyle(Color.fireballGreen)
-                    .frame(width: 24)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title).lineLimit(1)
-                    Text(url.absoluteString)
-                        .font(.caption)
-                        .foregroundStyle(Color.fireballMuted)
-                        .lineLimit(1)
-                }
-            }
-            .frame(minHeight: 44)
+            libraryRowLabel(title: title, url: url, icon: icon)
         }
         .buttonStyle(.plain)
     }
 
-    private func emptyState(_ title: String, icon: String) -> some View {
-        ContentUnavailableView(title, systemImage: icon, description: Text("Private activity never appears here."))
+    private func libraryRowLabel(title: String, url: URL, icon: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundStyle(Color.fireballGreen)
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).lineLimit(1)
+                Text(url.absoluteString)
+                    .font(.caption)
+                    .foregroundStyle(Color.fireballMuted)
+                    .lineLimit(1)
+            }
+        }
+        .frame(minHeight: 44)
+    }
+
+    private func emptyState(
+        _ title: String,
+        icon: String,
+        description: String = "Private activity never appears here."
+    ) -> some View {
+        ContentUnavailableView(title, systemImage: icon, description: Text(description))
             .foregroundStyle(Color.fireballMuted)
     }
 }

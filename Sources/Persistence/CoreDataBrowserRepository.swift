@@ -20,6 +20,7 @@ final class CoreDataBrowserRepository: BrowserRepository {
         case profile
         case space
         case tab
+        case archivedTab = "archived_tab"
         case bookmark
         case history
         case settings
@@ -96,6 +97,20 @@ final class CoreDataBrowserRepository: BrowserRepository {
         try replace(
             kind: .tab,
             values: snapshot.tabs.filter { $0.storageMode == .persistent },
+            id: { $0.id.rawValue.uuidString },
+            modifiedAt: { $0.modifiedAt },
+            entityName: Entity.synced,
+            context: context,
+            now: now
+        )
+        let persistentProfileIDs = Set(
+            snapshot.profiles
+                .filter { $0.storageMode == .persistent }
+                .map(\.id)
+        )
+        try replace(
+            kind: .archivedTab,
+            values: snapshot.archivedTabs.filter { persistentProfileIDs.contains($0.profileID) },
             id: { $0.id.rawValue.uuidString },
             modifiedAt: { $0.modifiedAt },
             entityName: Entity.synced,
@@ -274,6 +289,12 @@ final class CoreDataBrowserRepository: BrowserRepository {
             profiles: try decodeLatest(BrowserProfile.self, kind: .profile, entityName: Entity.synced, context: context),
             spaces: try decodeLatest(BrowserSpace.self, kind: .space, entityName: Entity.synced, context: context),
             tabs: try decodeLatest(BrowserTab.self, kind: .tab, entityName: Entity.synced, context: context),
+            archivedTabs: try decodeLatest(
+                ArchivedTab.self,
+                kind: .archivedTab,
+                entityName: Entity.synced,
+                context: context
+            ),
             bookmarks: try decodeLatest(Bookmark.self, kind: .bookmark, entityName: Entity.synced, context: context),
             history: try decodeLatest(HistoryVisit.self, kind: .history, entityName: historyEntity, context: context)
                 .filter { $0.visitedAt >= cutoff },

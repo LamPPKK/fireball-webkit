@@ -85,7 +85,33 @@ final class BrowserSmokeUITests: XCTestCase {
         app.buttons["browser.library"].tap()
 
         XCTAssertTrue(app.navigationBars["Library"].waitForExistence(timeout: 3))
+        app.buttons["Archive"].tap()
+        XCTAssertTrue(app.staticTexts["No archived tabs"].exists)
         try performAccessibilityAudit(app)
+    }
+
+    @MainActor
+    func testClosedRegularTabCanBeRestoredFromArchive() throws {
+        let app = launchApp()
+        let omnibox = app.textFields["browser.omnibox"]
+        omnibox.tap()
+        omnibox.typeText("https://example.com/archive")
+        app.buttons["browser.go"].tap()
+
+        app.buttons["browser.tabs"].tap()
+        let close = app.buttons["tab.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 3))
+        close.tap()
+        app.buttons["Done"].tap()
+
+        app.buttons["browser.library"].tap()
+        app.buttons["Archive"].tap()
+        let restore = app.buttons["library.archive.restore"]
+        XCTAssertTrue(restore.waitForExistence(timeout: 3))
+        restore.tap()
+
+        XCTAssertTrue(omnibox.waitForExistence(timeout: 3))
+        XCTAssertEqual(omnibox.value as? String, "https://example.com/archive")
     }
 
     @MainActor

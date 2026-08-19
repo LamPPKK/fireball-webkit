@@ -22,6 +22,10 @@ struct TabID: UUIDBackedIdentifier {
     let rawValue: UUID
 }
 
+struct ArchivedTabID: UUIDBackedIdentifier {
+    let rawValue: UUID
+}
+
 struct BookmarkID: UUIDBackedIdentifier {
     let rawValue: UUID
 }
@@ -144,6 +148,16 @@ struct BrowserTab: Identifiable, Hashable, Codable, Sendable {
     var isPrivate: Bool { storageMode == .ephemeral }
 }
 
+struct ArchivedTab: Identifiable, Hashable, Codable, Sendable {
+    let id: ArchivedTabID
+    let profileID: ProfileID
+    let sourceSpaceID: SpaceID
+    let url: URL
+    var title: String
+    let archivedAt: Date
+    var modifiedAt: Date
+}
+
 struct Bookmark: Identifiable, Hashable, Codable, Sendable {
     let id: BookmarkID
     let profileID: ProfileID
@@ -172,6 +186,7 @@ struct BrowserSnapshot: Hashable, Codable, Sendable {
     var profiles: [BrowserProfile]
     var spaces: [BrowserSpace]
     var tabs: [BrowserTab]
+    var archivedTabs: [ArchivedTab]
     var bookmarks: [Bookmark]
     var history: [HistoryVisit]
     var settings: BrowserSettings
@@ -191,6 +206,7 @@ struct BrowserSnapshot: Hashable, Codable, Sendable {
             profiles: [profile],
             spaces: [space],
             tabs: [],
+            archivedTabs: [],
             bookmarks: [],
             history: [],
             settings: BrowserSettings(modifiedAt: now)

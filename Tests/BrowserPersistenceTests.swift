@@ -77,6 +77,45 @@ final class BrowserPersistenceTests: XCTestCase {
         XCTAssertEqual(restored.history.map(\.id), [visit.id])
     }
 
+    func testRegularArchivePersistsButPrivateProfileArchiveIsRejected() async throws {
+        let repository = CoreDataBrowserRepository(inMemory: true, cloudKitEnabled: false)
+        var snapshot = try await repository.load()
+        let regularProfile = try XCTUnwrap(snapshot.profiles.first)
+        let regularSpace = try XCTUnwrap(snapshot.spaces.first)
+        let now = Date.now
+        let regular = ArchivedTab(
+            id: ArchivedTabID(),
+            profileID: regularProfile.id,
+            sourceSpaceID: regularSpace.id,
+            url: try XCTUnwrap(URL(string: "https://regular.example")),
+            title: "Regular",
+            archivedAt: now,
+            modifiedAt: now
+        )
+        let privateProfile = BrowserProfile.privateProfile(now: now)
+        snapshot.profiles.append(privateProfile)
+        snapshot.archivedTabs = [
+            regular,
+            ArchivedTab(
+                id: ArchivedTabID(),
+                profileID: privateProfile.id,
+                sourceSpaceID: SpaceID(),
+                url: try XCTUnwrap(URL(string: "https://private.example")),
+                title: "Private",
+                archivedAt: now,
+                modifiedAt: now
+            ),
+        ]
+
+        try repository.save(snapshot)
+        let restored = try await repository.load()
+
+        XCTAssertEqual(restored.archivedTabs.map(\.id), [regular.id])
+        XCTAssertEqual(restored.archivedTabs.map(\.profileID), [regular.profileID])
+        XCTAssertEqual(restored.archivedTabs.map(\.url), [regular.url])
+        XCTAssertFalse(restored.archivedTabs.contains { $0.profileID == privateProfile.id })
+    }
+
     func testHistoryOlderThanNinetyDaysIsNotRestored() async throws {
         let repository = CoreDataBrowserRepository(inMemory: true, cloudKitEnabled: false)
         var snapshot = try await repository.load()

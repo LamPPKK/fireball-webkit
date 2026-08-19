@@ -8,12 +8,13 @@
   <link rel="stylesheet" href="fireball.css">
 </head>
 <body>
+  <a class="skip-link" href="#content">Skip to content</a>
   <div class="shell">
     <nav aria-label="Primary">
       <a class="brand" href="index.html">Fireball Browser</a>
       <div class="nav-links"><a href="privacy.html">Privacy</a><a href="support.html">Support</a></div>
     </nav>
-    <main>
+    <main id="content">
       <div class="eyebrow">Native WebKit · iOS and iPadOS 18+</div>
       <h1>Browse in your own spaces.</h1>
       <p class="lede">Fireball is a native browser shell that keeps profiles separate, makes private tabs temporary, and collects no product telemetry.</p>
@@ -22,6 +23,20 @@
         <div class="card"><strong>Private by design</strong><span>Private spaces are nonpersistent and disappear instead of joining session restore.</span></div>
         <div class="card"><strong>Signed blocker data</strong><span>Rule updates are verified and compiled before replacing the last-known-good set.</span></div>
       </div>
+      <section class="showcase" aria-labelledby="showcase-title">
+        <div class="eyebrow">Built and captured on Simulator</div>
+        <h2 id="showcase-title">One shell, two form factors.</h2>
+        <p>The images below come from the opt-in XCTest documentation flow on iOS 18.6, not from hand-authored device mockups.</p>
+        <div class="screens phone-screens">
+          <figure><img loading="lazy" src="assets/fireball-iphone-home.png" alt="Fireball native home on iPhone"><figcaption>Native home</figcaption></figure>
+          <figure><img loading="lazy" src="assets/fireball-iphone-tabs.png" alt="Fireball tab grid on iPhone"><figcaption>Tab grid</figcaption></figure>
+          <figure><img loading="lazy" src="assets/fireball-iphone-settings.png" alt="Fireball privacy settings on iPhone"><figcaption>Profile privacy</figcaption></figure>
+        </div>
+        <div class="screens ipad-screens">
+          <figure><img loading="lazy" src="assets/fireball-ipad-tabs.png" alt="Fireball adaptive tab grid with spaces sidebar on iPad"><figcaption>Adaptive iPad tab grid</figcaption></figure>
+          <figure><img loading="lazy" src="assets/fireball-ipad-settings.png" alt="Fireball settings sheet on iPad"><figcaption>Settings sheet</figcaption></figure>
+        </div>
+      </section>
     </main>
     <footer>Fireball Browser beta information · <a href="privacy.html">Privacy policy</a> · <a href="support.html">Support</a></footer>
   </div>

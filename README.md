@@ -18,7 +18,14 @@ Marketing version `0.1.0` · Bundle identifier `com.fireball.browser` · Default
 | --- | --- | --- |
 | ![Fireball home on iPhone](docs/assets/fireball-iphone-home.png) | ![Fireball tab grid on iPhone](docs/assets/fireball-iphone-tabs.png) | ![Fireball settings on iPhone](docs/assets/fireball-iphone-settings.png) |
 
-The screenshots were captured by `testCaptureDocumentationMedia`; the MP4 records that same UI-test flow in Simulator. These files are documentation evidence, not a substitute for physical-device or TestFlight acceptance.
+| iPad home | Adaptive tab grid | iPad settings |
+| --- | --- | --- |
+| ![Fireball home on iPad](docs/assets/fireball-ipad-home.png) | ![Fireball adaptive tab grid on iPad](docs/assets/fireball-ipad-tabs.png) | ![Fireball settings on iPad](docs/assets/fireball-ipad-settings.png) |
+
+The six screenshots were captured by `testCaptureDocumentationMedia` from the
+current app build on iPhone 16 Pro and iPad Pro 11-inch iOS 18.6 Simulators; the
+MP4 records the same UI-test flow separately. These files are documentation
+evidence, not a substitute for physical-device or TestFlight acceptance.
 
 ## What is implemented
 

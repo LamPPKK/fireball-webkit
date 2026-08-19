@@ -7,7 +7,7 @@ struct TabGridView: View {
     @State private var newProfileName = ""
     @State private var showNewProfile = false
 
-    private let columns = [GridItem(.adaptive(minimum: 155), spacing: 12)]
+    private let columns = [GridItem(.adaptive(minimum: 168), spacing: 14)]
 
     var body: some View {
         NavigationStack {
@@ -27,7 +27,7 @@ struct TabGridView: View {
                     }
                 }
             }
-            .navigationTitle("Tabs")
+            .navigationTitle("Open orbits")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -74,9 +74,10 @@ struct TabGridView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.vertical, 12)
         }
-        .background(Color.fireballPanel)
+        .background(Color.fireballPanel.opacity(0.98))
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.fireballBorder).frame(height: 1) }
     }
 
     private var spaceSidebar: some View {
@@ -99,11 +100,19 @@ struct TabGridView: View {
 
     private var tabGrid: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 12) {
-                ForEach(store.tabsInSelectedSpace) { tab in
-                    tabCard(tab)
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    FireballSectionLabel(title: "Tabs in this space", index: "02")
+                    Text("\(store.tabsInSelectedSpace.count)")
+                        .font(.caption.monospaced().weight(.black))
+                        .foregroundStyle(Color.fireballGreen)
                 }
-                newTabCard
+                LazyVGrid(columns: columns, spacing: 14) {
+                    ForEach(store.tabsInSelectedSpace) { tab in
+                        tabCard(tab)
+                    }
+                    newTabCard
+                }
             }
             .padding(16)
         }
@@ -124,14 +133,14 @@ struct TabGridView: View {
             }
             .font(.caption.monospaced().weight(.bold))
             .padding(.horizontal, 13)
-            .frame(maxWidth: compact ? nil : .infinity, minHeight: 40, alignment: .leading)
+            .frame(maxWidth: compact ? nil : .infinity, minHeight: 44, alignment: .leading)
             .background(
                 store.selectedSpaceID == space.id ? Color.fireballRaised : Color.clear,
-                in: RoundedRectangle(cornerRadius: compact ? 20 : 8, style: .continuous)
+                in: RoundedRectangle(cornerRadius: compact ? 22 : 12, style: .continuous)
             )
             .overlay {
-                RoundedRectangle(cornerRadius: compact ? 20 : 8, style: .continuous)
-                    .stroke(Color.white.opacity(0.12))
+                RoundedRectangle(cornerRadius: compact ? 22 : 12, style: .continuous)
+                    .stroke(store.selectedSpaceID == space.id ? Color.fireballGreen.opacity(0.55) : Color.fireballBorder)
             }
         }
         .buttonStyle(.plain)
@@ -159,16 +168,23 @@ struct TabGridView: View {
         } label: {
             VStack(spacing: 11) {
                 Image(systemName: "plus")
-                    .font(.system(size: 24, weight: .light))
-                Text("NEW TAB")
-                    .font(.body.monospaced().weight(.bold))
+                    .font(.title2.weight(.medium))
+                    .frame(width: 48, height: 48)
+                    .background(Color.fireballRaised, in: Circle())
+                Text("NEW ORBIT")
+                    .font(.headline.weight(.black))
+                Text("Open a clean tab in this space")
+                    .font(.caption)
+                    .foregroundStyle(Color.fireballMuted)
+                    .multilineTextAlignment(.center)
             }
             .foregroundStyle(Color.fireballGreen)
-            .frame(maxWidth: .infinity, minHeight: 176)
+            .frame(maxWidth: .infinity, minHeight: 224)
+            .padding(16)
             .background(Color.fireballPanel)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(Color.fireballGreen.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
             }
         }
@@ -189,7 +205,7 @@ private struct SwipeClosableTabCard: View {
 
     var body: some View {
         ZStack(alignment: .trailing) {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color.fireballOrange.opacity(0.9))
                 .overlay(alignment: .trailing) {
                     Image(systemName: "trash.fill")
@@ -201,46 +217,63 @@ private struct SwipeClosableTabCard: View {
             ZStack(alignment: .topTrailing) {
                 Button(action: onOpen) {
                     VStack(alignment: .leading, spacing: 0) {
-                        ZStack {
-                            Color.fireballRaised
+                        ZStack(alignment: .bottomLeading) {
+                            LinearGradient(
+                                colors: [Color.fireballRaised, Color.fireballPanel],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                             if let thumbnail {
                                 Image(uiImage: thumbnail)
                                     .resizable()
                                     .scaledToFill()
                                     .clipped()
                             } else {
-                                VStack(spacing: 8) {
-                                    Image(systemName: tab.isPrivate ? "eye.slash" : "globe")
-                                        .font(.system(size: 25, weight: .light))
-                                        .foregroundStyle(tab.isPrivate ? Color.fireballOrange : Color.fireballGreen)
-                                    Text(tab.url?.host() ?? "HOME")
-                                        .font(.body.monospaced().weight(.bold))
-                                        .foregroundStyle(Color.fireballMuted)
+                                ZStack {
+                                    FireballTrajectory()
+                                    if tab.url == nil {
+                                        FireballBrandMark(size: 72)
+                                    } else {
+                                        Image(systemName: tab.isPrivate ? "eye.slash" : "globe.americas.fill")
+                                            .font(.system(size: 32, weight: .light))
+                                            .foregroundStyle(tab.isPrivate ? Color.fireballOrange : Color.fireballGreen)
+                                    }
                                 }
                             }
                         }
-                        .frame(height: 118)
+                        .frame(height: 144)
 
-                        VStack(alignment: .leading, spacing: 5) {
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text(isSelected ? "ACTIVE" : tab.isPrivate ? "PRIVATE" : "BACKGROUND")
+                                .font(.caption.monospaced().weight(.black))
+                                .foregroundStyle(isSelected ? Color.fireballBackground : Color.fireballCream)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 5)
+                                .background(
+                                    isSelected ? Color.fireballGreen : Color.black.opacity(0.58),
+                                    in: Capsule()
+                                )
+                                .fixedSize(horizontal: false, vertical: true)
                             Text(tab.title)
-                                .font(.body.monospaced().weight(.bold))
+                                .font(.headline.weight(.bold))
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(tab.url?.absoluteString ?? "Fireball home")
-                                .font(.body)
+                                .font(.caption)
                                 .foregroundStyle(Color.fireballMuted)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(12)
                     }
                     .background(Color.fireballPanel)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .stroke(isSelected ? Color.fireballGreen : Color.white.opacity(0.1), lineWidth: 1)
                     }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(tab.title), \(tab.url?.host() ?? "Fireball home")")
+                .accessibilityValue(isSelected ? "Active tab" : tab.isPrivate ? "Private tab" : "Background tab")
                 .accessibilityHint("Double-tap to open. Swipe left to close.")
                 .accessibilityIdentifier("tab.card")
                 .accessibilityAction(named: "Close tab") { onClose() }
@@ -258,7 +291,7 @@ private struct SwipeClosableTabCard: View {
             }
             .offset(x: dragOffset)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .contentShape(Rectangle())
         .highPriorityGesture(
             DragGesture(minimumDistance: 16)

@@ -101,34 +101,41 @@ struct BrowserShellView: View {
 
     private var statusRail: some View {
         HStack(spacing: 10) {
-            Text("FIREBALL")
-                .font(.subheadline.monospaced().weight(.black))
-                .tracking(1.8)
-            Rectangle().fill(Color.fireballGreen).frame(width: 22, height: 2)
+            FireballBrandMark(size: 30)
+            Text("Fireball")
+                .font(.headline.weight(.black))
+                .foregroundStyle(Color.fireballCream)
             if horizontalSizeClass == .regular && !dynamicTypeSize.isAccessibilitySize {
-                Text(store.activeProfile?.name.uppercased() ?? "NO PROFILE")
-                    .foregroundStyle(Color.fireballMuted)
-                Text("/")
-                    .foregroundStyle(Color.white.opacity(0.24))
-                Text(store.selectedSpace?.name.uppercased() ?? "NO SPACE")
-                    .foregroundStyle(store.selectedSpace?.storageMode == .ephemeral ? Color.fireballOrange : .secondary)
+                contextBadge(
+                    store.activeProfile?.name.uppercased() ?? "NO PROFILE",
+                    systemImage: "person.crop.circle",
+                    accent: .fireballGreen
+                )
+                contextBadge(
+                    store.selectedSpace?.name.uppercased() ?? "NO SPACE",
+                    systemImage: store.selectedSpace?.storageMode == .ephemeral ? "eye.slash" : "square.stack.3d.up",
+                    accent: store.selectedSpace?.storageMode == .ephemeral ? .fireballOrange : .fireballMuted
+                )
             }
             Spacer()
             if horizontalSizeClass == .regular && !dynamicTypeSize.isAccessibilitySize {
-                Text(store.syncStatus.label)
+                Label(store.syncStatus.label, systemImage: "icloud")
                     .foregroundStyle(syncColor)
             }
-            Text("\(store.tabsInSelectedSpace.count) TAB\(store.tabsInSelectedSpace.count == 1 ? "" : "S")")
-                .font(.body.weight(.bold))
-                .foregroundStyle(.secondary)
+            Label(
+                "\(store.tabsInSelectedSpace.count)",
+                systemImage: "square.on.square"
+            )
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(Color.fireballMuted)
                 .lineLimit(2)
         }
-        .font(.body.weight(.bold))
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .frame(minHeight: 40)
-        .background(Color.fireballPanel)
-        .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.1)).frame(height: 1) }
+        .font(.caption.weight(.bold))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .frame(minHeight: 48)
+        .background(Color.fireballPanel.opacity(0.98))
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.fireballBorder).frame(height: 1) }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Browser status")
         .accessibilityValue(statusAccessibilityValue)
@@ -169,10 +176,15 @@ struct BrowserShellView: View {
             }
             .buttonStyle(FireballCompactButtonStyle())
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.1)).frame(height: 1) }
+        .padding(12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.fireballBorder)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.fireballBackground)
     }
 
     @ViewBuilder
@@ -219,24 +231,30 @@ struct BrowserShellView: View {
     }
 
     private var addressField: some View {
-        TextField("Address", text: $address)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .keyboardType(.URL)
-            .submitLabel(.go)
-            .onSubmit(navigate)
-            .font(.body.monospaced().weight(.medium))
-            .padding(.horizontal, 14)
-            .frame(minHeight: max(48, addressControlHeight))
-            .background(Color.fireballRaised, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .stroke(Color.white.opacity(0.14))
-            }
-            .accessibilityLabel("Address and search")
-            .accessibilityHint("Enter a website address or search terms")
-            .accessibilityIdentifier("browser.omnibox")
-            .focused($focusedControl, equals: .address)
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(focusedControl == .address ? Color.fireballGreen : Color.fireballMuted)
+                .accessibilityHidden(true)
+            TextField("Address", text: $address)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .submitLabel(.go)
+                .onSubmit(navigate)
+                .font(.body.weight(.medium))
+                .lineLimit(1)
+                .accessibilityLabel("Address and search")
+                .accessibilityHint("Enter a website address or search terms")
+                .accessibilityIdentifier("browser.omnibox")
+                .focused($focusedControl, equals: .address)
+        }
+        .padding(.horizontal, 14)
+        .frame(minHeight: max(48, addressControlHeight))
+        .background(Color.fireballRaised, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .stroke(focusedControl == .address ? Color.fireballGreen : Color.fireballBorder, lineWidth: 1)
+        }
     }
 
     private var goButton: some View {
@@ -248,7 +266,7 @@ struct BrowserShellView: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(Color.fireballBackground)
-        .background(Color.fireballGreen, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .background(Color.fireballGreen, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
         .accessibilityLabel("Go")
         .accessibilityHint("Open the address or search")
         .accessibilityIdentifier("browser.go")
@@ -256,6 +274,7 @@ struct BrowserShellView: View {
 
     private var loadingView: some View {
         VStack(spacing: 18) {
+            FireballBrandMark(size: 72)
             ProgressView().tint(Color.fireballGreen).controlSize(.large)
             Text("INITIALIZING PRIVATE STORES")
                 .font(.caption.monospaced().weight(.bold))
@@ -292,13 +311,11 @@ struct BrowserShellView: View {
     private var privacyShield: some View {
         ZStack {
             Color.fireballBackground.ignoresSafeArea()
+            FireballTrajectory()
             VStack(spacing: 12) {
-                Image(systemName: "flame.fill")
-                    .font(.system(size: 46, weight: .black))
-                    .foregroundStyle(Color.fireballOrange)
-                Text("FIREBALL")
-                    .font(.title2.monospaced().weight(.black))
-                    .tracking(3)
+                FireballBrandMark(size: 104)
+                Text("Fireball")
+                    .font(.title2.weight(.black))
                 Text("CONTENT HIDDEN")
                     .font(.caption.monospaced().weight(.bold))
                     .foregroundStyle(Color.fireballMuted)
@@ -323,6 +340,16 @@ struct BrowserShellView: View {
         .disabled(!enabled)
         .foregroundStyle(enabled ? Color.primary : Color.secondary.opacity(0.35))
         .accessibilityLabel(label)
+    }
+
+    private func contextBadge(_ title: String, systemImage: String, accent: Color) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.caption2.monospaced().weight(.bold))
+            .foregroundStyle(accent)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 28)
+            .background(Color.fireballRaised, in: Capsule())
+            .overlay { Capsule().stroke(Color.fireballBorder) }
     }
 
     private func navigate() {
@@ -404,10 +431,11 @@ private struct FireballCompactButtonStyle: ButtonStyle {
             .labelStyle(.iconOnly)
             .frame(minWidth: 48, minHeight: 48)
             .contentShape(Rectangle())
-            .foregroundStyle(configuration.isPressed ? Color.fireballGreen : Color.primary)
+            .foregroundStyle(configuration.isPressed ? Color.fireballGreen : Color.fireballCream)
             .background(
                 configuration.isPressed ? Color.fireballRaised : Color.clear,
-                in: RoundedRectangle(cornerRadius: 8)
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
             )
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }

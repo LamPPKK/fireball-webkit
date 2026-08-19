@@ -6,13 +6,22 @@
 
 Fireball is a native SwiftUI browser shell around `WKWebView` for iPhone and iPad. It keeps WebKit's sandboxed process model, separates website data by profile, leaves private spaces out of restore, and ships without a telemetry SDK.
 
+<img src="Brand/FireballMeteorMark.png" width="104" alt="Fireball meteor brand mark">
+
+The detached meteor is the shared Fireball mark. WebKit turns that identity into
+a **quiet cosmic flight deck**: native SwiftUI sheets and controls, a floating
+bottom omnibox, adaptive iPad composition, Dynamic Type and 44-point-or-larger
+touch targets. Product tokens and component rules are recorded in
+[`design-system/fireball-webkit/MASTER.md`](design-system/fireball-webkit/MASTER.md)
+and [`pages/browser-shell.md`](design-system/fireball-webkit/pages/browser-shell.md).
+
 ![Fireball tab grid on iPad](docs/assets/fireball-ipad-tabs.png)
 
 Marketing version `0.1.0` · Bundle identifier `com.fireball.browser` · Default search Brave Search · External TestFlight candidate
 
 ## Demo and screenshots
 
-[▶ Watch the 10-second Simulator demo](docs/assets/fireball-demo.mp4)
+[▶ Watch the 12-second Simulator demo](docs/assets/fireball-demo.mp4)
 
 | Native home | Tab grid | Privacy settings |
 | --- | --- | --- |
@@ -23,7 +32,7 @@ Marketing version `0.1.0` · Bundle identifier `com.fireball.browser` · Default
 | ![Fireball home on iPad](docs/assets/fireball-ipad-home.png) | ![Fireball adaptive tab grid on iPad](docs/assets/fireball-ipad-tabs.png) | ![Fireball settings on iPad](docs/assets/fireball-ipad-settings.png) |
 
 The six screenshots were captured by `testCaptureDocumentationMedia` from the
-current app build on iPhone 16 Pro and iPad Pro 11-inch iOS 18.6 Simulators; the
+current app build on iPhone 16 and iPad (A16) iOS 18.6 Simulators; the
 MP4 records the same UI-test flow separately. These files are documentation
 evidence, not a substitute for physical-device or TestFlight acceptance.
 

@@ -116,6 +116,54 @@ final class BrowserPersistenceTests: XCTestCase {
         XCTAssertFalse(restored.archivedTabs.contains { $0.profileID == privateProfile.id })
     }
 
+    func testRegularSiteExceptionPersistsButPrivateAndMalformedEntriesAreRejected() async throws {
+        let repository = CoreDataBrowserRepository(inMemory: true, cloudKitEnabled: false)
+        var snapshot = try await repository.load()
+        let regularProfile = try XCTUnwrap(snapshot.profiles.first)
+        let privateProfile = BrowserProfile.privateProfile()
+        let now = Date.now
+        let regular = BlockerSiteException(
+            id: BlockerSiteExceptionID(),
+            profileID: regularProfile.id,
+            host: "example.com",
+            createdAt: now,
+            modifiedAt: now
+        )
+        snapshot.profiles.append(privateProfile)
+        snapshot.blockerSiteExceptions = [
+            regular,
+            BlockerSiteException(
+                id: BlockerSiteExceptionID(),
+                profileID: privateProfile.id,
+                host: "private.example",
+                createdAt: now,
+                modifiedAt: now
+            ),
+            BlockerSiteException(
+                id: BlockerSiteExceptionID(),
+                profileID: regularProfile.id,
+                host: "EXAMPLE.COM",
+                createdAt: now,
+                modifiedAt: now
+            ),
+        ]
+
+        try repository.save(snapshot)
+        let restored = try await repository.load()
+
+        let restoredException = try XCTUnwrap(restored.blockerSiteExceptions.first)
+        XCTAssertEqual(restored.blockerSiteExceptions.count, 1)
+        XCTAssertEqual(restoredException.id, regular.id)
+        XCTAssertEqual(restoredException.profileID, regular.profileID)
+        XCTAssertEqual(restoredException.host, regular.host)
+        XCTAssertEqual(restoredException.createdAt.timeIntervalSince1970, regular.createdAt.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(
+            restoredException.modifiedAt.timeIntervalSince1970,
+            regular.modifiedAt.timeIntervalSince1970,
+            accuracy: 0.001
+        )
+    }
+
     func testHistoryOlderThanNinetyDaysIsNotRestored() async throws {
         let repository = CoreDataBrowserRepository(inMemory: true, cloudKitEnabled: false)
         var snapshot = try await repository.load()

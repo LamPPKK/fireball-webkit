@@ -261,6 +261,9 @@ struct BrowserShellView: View {
                 .accessibilityHint("Enter a website address or search terms")
                 .accessibilityIdentifier("browser.omnibox")
                 .focused($focusedControl, equals: .address)
+            if let host = store.activeBlockerHost {
+                shieldsMenu(host: host)
+            }
         }
         .padding(.horizontal, 14)
         .frame(minHeight: max(48, addressControlHeight))
@@ -269,6 +272,61 @@ struct BrowserShellView: View {
             RoundedRectangle(cornerRadius: 15, style: .continuous)
                 .stroke(focusedControl == .address ? Color.fireballGreen : Color.fireballBorder, lineWidth: 1)
         }
+    }
+
+    private func shieldsMenu(host: String) -> some View {
+        Menu {
+            Section(host) {
+                if store.activeProfile?.blockerEnabled == true {
+                    Button {
+                        store.setShieldsEnabledForActiveSite(!store.shieldsEnabledForActiveSite)
+                    } label: {
+                        Label(
+                            store.shieldsEnabledForActiveSite
+                                ? "Pause Shields for \(host)"
+                                : "Enable Shields for \(host)",
+                            systemImage: store.shieldsEnabledForActiveSite ? "shield.slash" : "shield.checkered"
+                        )
+                    }
+                    if store.activeShieldsPolicyChangePending {
+                        Button {
+                            store.activeSession?.reload()
+                        } label: {
+                            Label("Reload to apply", systemImage: "arrow.clockwise")
+                        }
+                    }
+                } else {
+                    Label("Shields disabled for this profile", systemImage: "shield.slash")
+                }
+            }
+            Section {
+                Text("This setting matches only this exact hostname.")
+            }
+        } label: {
+            Image(systemName: shieldsSymbolName)
+                .font(.body.weight(.bold))
+                .foregroundStyle(shieldsTint)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Shields for \(host)")
+        .accessibilityValue(shieldsAccessibilityValue)
+        .accessibilityHint("Opens privacy controls for this website")
+        .accessibilityIdentifier("browser.shields")
+    }
+
+    private var shieldsSymbolName: String {
+        store.shieldsEnabledForActiveSite ? "shield.lefthalf.filled" : "shield.slash"
+    }
+
+    private var shieldsTint: Color {
+        store.shieldsEnabledForActiveSite ? .fireballGreen : .fireballOrange
+    }
+
+    private var shieldsAccessibilityValue: String {
+        let status = store.shieldsEnabledForActiveSite ? "On" : "Off"
+        return store.activeShieldsPolicyChangePending ? "\(status), reload required" : status
     }
 
     private var goButton: some View {

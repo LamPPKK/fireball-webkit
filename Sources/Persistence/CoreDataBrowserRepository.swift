@@ -21,6 +21,7 @@ final class CoreDataBrowserRepository: BrowserRepository {
         case space
         case tab
         case archivedTab = "archived_tab"
+        case blockerSiteException = "blocker_site_exception"
         case bookmark
         case history
         case settings
@@ -111,6 +112,18 @@ final class CoreDataBrowserRepository: BrowserRepository {
         try replace(
             kind: .archivedTab,
             values: snapshot.archivedTabs.filter { persistentProfileIDs.contains($0.profileID) },
+            id: { $0.id.rawValue.uuidString },
+            modifiedAt: { $0.modifiedAt },
+            entityName: Entity.synced,
+            context: context,
+            now: now
+        )
+        try replace(
+            kind: .blockerSiteException,
+            values: snapshot.blockerSiteExceptions.filter {
+                persistentProfileIDs.contains($0.profileID)
+                    && BlockerSitePolicy.normalizedHost($0.host) == $0.host
+            },
             id: { $0.id.rawValue.uuidString },
             modifiedAt: { $0.modifiedAt },
             entityName: Entity.synced,
@@ -284,9 +297,20 @@ final class CoreDataBrowserRepository: BrowserRepository {
             .first ?? BrowserSettings()
         let historyEntity = settings.historySyncEnabled ? Entity.synced : Entity.local
         let cutoff = Date.now.addingTimeInterval(-90 * 24 * 60 * 60)
+        let profiles = try decodeLatest(BrowserProfile.self, kind: .profile, entityName: Entity.synced, context: context)
+        let persistentProfileIDs = Set(profiles.filter { $0.storageMode == .persistent }.map(\.id))
+        let blockerSiteExceptions = try decodeLatest(
+            BlockerSiteException.self,
+            kind: .blockerSiteException,
+            entityName: Entity.synced,
+            context: context
+        ).filter {
+            persistentProfileIDs.contains($0.profileID)
+                && BlockerSitePolicy.normalizedHost($0.host) == $0.host
+        }
 
         return BrowserSnapshot(
-            profiles: try decodeLatest(BrowserProfile.self, kind: .profile, entityName: Entity.synced, context: context),
+            profiles: profiles,
             spaces: try decodeLatest(BrowserSpace.self, kind: .space, entityName: Entity.synced, context: context),
             tabs: try decodeLatest(BrowserTab.self, kind: .tab, entityName: Entity.synced, context: context),
             archivedTabs: try decodeLatest(
@@ -295,6 +319,7 @@ final class CoreDataBrowserRepository: BrowserRepository {
                 entityName: Entity.synced,
                 context: context
             ),
+            blockerSiteExceptions: blockerSiteExceptions,
             bookmarks: try decodeLatest(Bookmark.self, kind: .bookmark, entityName: Entity.synced, context: context),
             history: try decodeLatest(HistoryVisit.self, kind: .history, entityName: historyEntity, context: context)
                 .filter { $0.visitedAt >= cutoff },

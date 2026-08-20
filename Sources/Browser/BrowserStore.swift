@@ -8,11 +8,13 @@ final class BrowserStore {
     private static let historyLifetime: TimeInterval = 90 * 24 * 60 * 60
     private static let archiveLifetime: TimeInterval = 30 * 24 * 60 * 60
     private static let maximumArchivedTabsPerProfile = 200
+    private static let maximumBlockerSiteExceptionsPerProfile = 500
 
     var profiles: [BrowserProfile] = []
     var spaces: [BrowserSpace] = []
     var tabs: [BrowserTab] = []
     var archivedTabs: [ArchivedTab] = []
+    var blockerSiteExceptions: [BlockerSiteException] = []
     var bookmarks: [Bookmark] = []
     var history: [HistoryVisit] = []
     var settings = BrowserSettings()
@@ -83,6 +85,23 @@ final class BrowserStore {
         return session(for: activeTab)
     }
 
+    var activeBlockerHost: String? {
+        BlockerSitePolicy.normalizedHost(for: activeTab?.url)
+    }
+
+    var shieldsEnabledForActiveSite: Bool {
+        guard let profile = activeProfile else { return false }
+        return BlockerSitePolicy.rulesEnabled(
+            profileEnabled: profile.blockerEnabled,
+            for: activeTab?.url,
+            allowlistedHosts: blockerAllowlistedHosts(for: profile.id)
+        )
+    }
+
+    var activeShieldsPolicyChangePending: Bool {
+        activeSession?.hasPendingPolicyChange ?? false
+    }
+
     var tabsInSelectedSpace: [BrowserTab] {
         guard let selectedSpaceID else { return [] }
         return sorted(tabs.filter { $0.spaceID == selectedSpaceID })
@@ -116,6 +135,7 @@ final class BrowserStore {
             spaces = sorted(snapshot.spaces)
             tabs = SessionRestoration().restorableTabs(from: snapshot.tabs)
             archivedTabs = snapshot.archivedTabs
+            blockerSiteExceptions = sanitizedBlockerSiteExceptions(snapshot.blockerSiteExceptions)
             bookmarks = snapshot.bookmarks.sorted { $0.createdAt > $1.createdAt }
             history = snapshot.history
             settings = snapshot.settings
@@ -315,6 +335,7 @@ final class BrowserStore {
             spaces.removeAll { $0.profileID == profileID }
             tabs.removeAll { removedSpaces.contains($0.spaceID) }
             archivedTabs.removeAll { $0.profileID == profileID }
+            blockerSiteExceptions.removeAll { $0.profileID == profileID }
             bookmarks.removeAll { $0.profileID == profileID }
             history.removeAll { $0.profileID == profileID }
             ensureSelectionAndTab()
@@ -455,6 +476,29 @@ final class BrowserStore {
         tryPersist()
     }
 
+    func setShieldsEnabledForActiveSite(_ enabled: Bool) {
+        guard let profile = activeProfile,
+              profile.blockerEnabled,
+              let host = activeBlockerHost else { return }
+        let now = Date.now
+        if enabled {
+            blockerSiteExceptions.removeAll { $0.profileID == profile.id && $0.host == host }
+        } else if !blockerSiteExceptions.contains(where: { $0.profileID == profile.id && $0.host == host }) {
+            blockerSiteExceptions.append(
+                BlockerSiteException(
+                    id: BlockerSiteExceptionID(),
+                    profileID: profile.id,
+                    host: host,
+                    createdAt: now,
+                    modifiedAt: now
+                )
+            )
+            blockerSiteExceptions = sanitizedBlockerSiteExceptions(blockerSiteExceptions)
+        }
+        stagePolicyChange(for: profile.id)
+        tryPersist()
+    }
+
     func setBiometricLockEnabled(_ enabled: Bool, for profileID: ProfileID) async {
         do {
             if enabled {
@@ -569,7 +613,11 @@ final class BrowserStore {
         blockerStatus = status
         for session in sessions.values {
             guard let profile = profiles.first(where: { $0.id == session.profile.id }) else { continue }
-            session.stagePolicy(profile: profile, contentRules: rules)
+            session.stagePolicy(
+                profile: profile,
+                contentRules: rules,
+                blockerAllowlistedHosts: blockerAllowlistedHosts(for: profile.id)
+            )
         }
     }
 
@@ -607,6 +655,10 @@ final class BrowserStore {
             let privateProfiles = profiles.filter { $0.storageMode == .ephemeral }
             let privateSpaces = spaces.filter { $0.storageMode == .ephemeral }
             let privateTabs = tabs.filter { $0.storageMode == .ephemeral }
+            let privateProfileIDs = Set(privateProfiles.map(\.id))
+            let privateBlockerSiteExceptions = blockerSiteExceptions.filter {
+                privateProfileIDs.contains($0.profileID)
+            }
             let incomingTabIDs = Set(snapshot.tabs.map(\.id))
             for tab in tabs where tab.storageMode == .persistent && !incomingTabIDs.contains(tab.id) {
                 sessions.removeValue(forKey: tab.id)?.webView.stopLoading()
@@ -616,12 +668,18 @@ final class BrowserStore {
             spaces = sorted(snapshot.spaces + privateSpaces)
             tabs = SessionRestoration().restorableTabs(from: snapshot.tabs) + privateTabs
             archivedTabs = snapshot.archivedTabs
+            blockerSiteExceptions = sanitizedBlockerSiteExceptions(
+                snapshot.blockerSiteExceptions + privateBlockerSiteExceptions
+            )
             bookmarks = snapshot.bookmarks.sorted { $0.createdAt > $1.createdAt }
             history = snapshot.history
             settings = snapshot.settings
             purgeExpiredArchive(now: .now)
             syncStatus = repository.syncStatus
             ensureSelectionAndTab()
+            for profile in profiles {
+                stagePolicyChange(for: profile.id)
+            }
             if !archiveStaleTabs(now: .now).isEmpty {
                 tryPersist()
             }
@@ -648,7 +706,9 @@ final class BrowserStore {
             tabID: tab.id,
             profile: profile,
             dataStore: dataStores.store(for: profile),
-            contentRules: contentRules
+            contentRules: contentRules,
+            blockerAllowlistedHosts: blockerAllowlistedHosts(for: profile.id),
+            initialURL: tab.url
         )
         session.onStateChange = { [weak self] session in
             self?.syncTabState(from: session)
@@ -839,6 +899,7 @@ final class BrowserStore {
     private func closePrivateSpace(_ spaceID: SpaceID) {
         guard let space = spaces.first(where: { $0.id == spaceID }), space.storageMode == .ephemeral else { return }
         downloadCenter.removePrivateDownloads(for: space.profileID)
+        blockerSiteExceptions.removeAll { $0.profileID == space.profileID }
         spaces.removeAll { $0.id == spaceID }
         profiles.removeAll { $0.id == space.profileID }
         dataStores.removeEphemeralStore(for: space.profileID)
@@ -868,7 +929,52 @@ final class BrowserStore {
         let affectedSpaces = Set(spaces.filter { $0.profileID == profileID }.map(\.id))
         let affectedTabs = tabs.filter { affectedSpaces.contains($0.spaceID) }
         for tab in affectedTabs {
-            sessions[tab.id]?.stagePolicy(profile: profile, contentRules: contentRules)
+            sessions[tab.id]?.stagePolicy(
+                profile: profile,
+                contentRules: contentRules,
+                blockerAllowlistedHosts: blockerAllowlistedHosts(for: profileID)
+            )
+        }
+    }
+
+    private func blockerAllowlistedHosts(for profileID: ProfileID) -> Set<String> {
+        Set(blockerSiteExceptions.lazy.filter { $0.profileID == profileID }.map(\.host))
+    }
+
+    private func sanitizedBlockerSiteExceptions(
+        _ candidates: [BlockerSiteException]
+    ) -> [BlockerSiteException] {
+        let profileIDs = Set(profiles.map(\.id))
+        var newestByProfileAndHost: [String: BlockerSiteException] = [:]
+        for candidate in candidates {
+            guard profileIDs.contains(candidate.profileID),
+                  let host = BlockerSitePolicy.normalizedHost(candidate.host) else { continue }
+            let normalized = BlockerSiteException(
+                id: candidate.id,
+                profileID: candidate.profileID,
+                host: host,
+                createdAt: candidate.createdAt,
+                modifiedAt: candidate.modifiedAt
+            )
+            let key = "\(candidate.profileID.rawValue.uuidString)|\(host)"
+            if let current = newestByProfileAndHost[key],
+               current.modifiedAt > normalized.modifiedAt
+                || (current.modifiedAt == normalized.modifiedAt
+                    && current.id.rawValue.uuidString < normalized.id.rawValue.uuidString) {
+                continue
+            }
+            newestByProfileAndHost[key] = normalized
+        }
+        return profiles.flatMap { profile in
+            newestByProfileAndHost.values
+                .filter { $0.profileID == profile.id }
+                .sorted { lhs, rhs in
+                    if lhs.modifiedAt == rhs.modifiedAt {
+                        return lhs.id.rawValue.uuidString < rhs.id.rawValue.uuidString
+                    }
+                    return lhs.modifiedAt > rhs.modifiedAt
+                }
+                .prefix(Self.maximumBlockerSiteExceptionsPerProfile)
         }
     }
 
@@ -890,6 +996,11 @@ final class BrowserStore {
             spaces: spaces.filter { $0.storageMode == .persistent },
             tabs: tabs.filter { $0.storageMode == .persistent },
             archivedTabs: archivedTabs,
+            blockerSiteExceptions: blockerSiteExceptions.filter { exception in
+                profiles.contains {
+                    $0.id == exception.profileID && $0.storageMode == .persistent
+                }
+            },
             bookmarks: bookmarks,
             history: history,
             settings: settings
@@ -901,6 +1012,7 @@ final class BrowserStore {
         spaces = sorted(snapshot.spaces)
         tabs = SessionRestoration().restorableTabs(from: snapshot.tabs)
         archivedTabs = snapshot.archivedTabs
+        blockerSiteExceptions = sanitizedBlockerSiteExceptions(snapshot.blockerSiteExceptions)
         bookmarks = snapshot.bookmarks
         history = snapshot.history
         settings = snapshot.settings

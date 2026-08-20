@@ -75,4 +75,45 @@ final class BrowserModelsTests: XCTestCase {
 
         XCTAssertNil(decodedSettings.automaticArchiveInterval)
     }
+
+    func testBlockerSitePolicyNormalizesAndMatchesOnlyTheExactHost() throws {
+        XCTAssertEqual(BlockerSitePolicy.normalizedHost(" Example.COM. "), "example.com")
+        XCTAssertEqual(
+            BlockerSitePolicy.normalizedHost(for: URL(string: "https://[::1]/status")),
+            "::1"
+        )
+        XCTAssertNil(BlockerSitePolicy.normalizedHost("example.com/path"))
+        XCTAssertNil(BlockerSitePolicy.normalizedHost(for: URL(string: "file:///tmp/index.html")))
+
+        let allowlist: Set<String> = ["example.com"]
+        XCTAssertFalse(
+            BlockerSitePolicy.rulesEnabled(
+                profileEnabled: true,
+                for: try XCTUnwrap(URL(string: "https://example.com/article")),
+                allowlistedHosts: allowlist
+            )
+        )
+        XCTAssertTrue(
+            BlockerSitePolicy.rulesEnabled(
+                profileEnabled: true,
+                for: try XCTUnwrap(URL(string: "https://news.example.com/article")),
+                allowlistedHosts: allowlist
+            )
+        )
+    }
+
+    func testLegacySnapshotDecodesWithoutBlockerSiteExceptions() throws {
+        let encoder = JSONEncoder()
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoder.encode(BrowserSnapshot.initial())) as? [String: Any]
+        )
+        object.removeValue(forKey: "blockerSiteExceptions")
+
+        let decoded = try JSONDecoder().decode(
+            BrowserSnapshot.self,
+            from: JSONSerialization.data(withJSONObject: object)
+        )
+
+        XCTAssertTrue(decoded.blockerSiteExceptions.isEmpty)
+    }
 }

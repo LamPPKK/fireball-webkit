@@ -4,6 +4,11 @@ import WebKit
 @MainActor
 @Observable
 final class BrowserSession {
+    private struct PendingContentPolicy {
+        let contentRules: [WKContentRuleList]
+        let allowlistedHosts: Set<String>
+    }
+
     let tabID: TabID
     private(set) var profile: BrowserProfile
     let webView: WKWebView
@@ -20,7 +25,10 @@ final class BrowserSession {
     @ObservationIgnored var onExternalURL: ((URL) -> Void)?
     @ObservationIgnored var onWebContentProcessTerminated: ((BrowserSession) -> Void)?
     @ObservationIgnored var onDownloadStarted: ((WKDownload, DownloadID?) -> Void)?
-    @ObservationIgnored private var pendingContentRules: [WKContentRuleList]?
+    @ObservationIgnored private var contentRules: [WKContentRuleList]
+    @ObservationIgnored private var allowlistedHosts: Set<String>
+    @ObservationIgnored private var contentBlockerApplied: Bool
+    @ObservationIgnored private var pendingContentPolicy: PendingContentPolicy?
     @ObservationIgnored private var recoveryPolicy = WebContentProcessRecoveryPolicy()
     @ObservationIgnored private var webViewDelegate: BrowserSessionWebViewDelegate?
 
@@ -28,16 +36,25 @@ final class BrowserSession {
         tabID: TabID,
         profile: BrowserProfile,
         dataStore: WKWebsiteDataStore,
-        contentRules: [WKContentRuleList] = []
+        contentRules: [WKContentRuleList] = [],
+        blockerAllowlistedHosts: Set<String> = [],
+        initialURL: URL? = nil
     ) {
         self.tabID = tabID
         self.profile = profile
+        self.contentRules = contentRules
+        allowlistedHosts = blockerAllowlistedHosts
+        contentBlockerApplied = BlockerSitePolicy.rulesEnabled(
+            profileEnabled: profile.blockerEnabled,
+            for: initialURL,
+            allowlistedHosts: blockerAllowlistedHosts
+        )
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = dataStore
         configuration.preferences.isElementFullscreenEnabled = true
         configuration.allowsInlineMediaPlayback = true
         configuration.allowsPictureInPictureMediaPlayback = true
-        if profile.blockerEnabled {
+        if contentBlockerApplied {
             for rule in contentRules {
                 configuration.userContentController.add(rule)
             }
@@ -51,22 +68,46 @@ final class BrowserSession {
     }
 
     var hasPendingPolicyChange: Bool {
-        pendingContentRules != nil
+        pendingContentPolicy != nil
     }
 
-    func stagePolicy(profile: BrowserProfile, contentRules: [WKContentRuleList]) {
+    func stagePolicy(
+        profile: BrowserProfile,
+        contentRules: [WKContentRuleList],
+        blockerAllowlistedHosts: Set<String> = []
+    ) {
         guard profile.id == self.profile.id else { return }
         self.profile = profile
-        pendingContentRules = profile.blockerEnabled ? contentRules : []
+        pendingContentPolicy = PendingContentPolicy(
+            contentRules: contentRules,
+            allowlistedHosts: blockerAllowlistedHosts
+        )
     }
 
     func applyPendingPolicy() {
-        guard let pendingContentRules else { return }
-        webView.configuration.userContentController.removeAllContentRuleLists()
-        for rule in pendingContentRules {
-            webView.configuration.userContentController.add(rule)
+        preparePolicy(for: webView.url ?? currentURL)
+    }
+
+    func preparePolicy(for url: URL?) {
+        let hadPendingPolicy = pendingContentPolicy != nil
+        if let pendingContentPolicy {
+            contentRules = pendingContentPolicy.contentRules
+            allowlistedHosts = pendingContentPolicy.allowlistedHosts
+            self.pendingContentPolicy = nil
         }
-        self.pendingContentRules = nil
+        let shouldApply = BlockerSitePolicy.rulesEnabled(
+            profileEnabled: profile.blockerEnabled,
+            for: url,
+            allowlistedHosts: allowlistedHosts
+        )
+        guard hadPendingPolicy || shouldApply != contentBlockerApplied else { return }
+        webView.configuration.userContentController.removeAllContentRuleLists()
+        if shouldApply {
+            for rule in contentRules {
+                webView.configuration.userContentController.add(rule)
+            }
+        }
+        contentBlockerApplied = shouldApply
     }
 
     func load(_ url: URL) {
@@ -76,7 +117,7 @@ final class BrowserSession {
     }
 
     private func loadRequest(_ url: URL) {
-        applyPendingPolicy()
+        preparePolicy(for: url)
         let policy: URLRequest.CachePolicy = profile.storageMode == .ephemeral
             ? .reloadIgnoringLocalCacheData
             : .useProtocolCachePolicy
@@ -84,18 +125,18 @@ final class BrowserSession {
     }
 
     func goBack() {
-        applyPendingPolicy()
+        preparePolicy(for: webView.backForwardList.backItem?.url ?? webView.url ?? currentURL)
         webView.goBack()
     }
 
     func goForward() {
-        applyPendingPolicy()
+        preparePolicy(for: webView.backForwardList.forwardItem?.url ?? webView.url ?? currentURL)
         webView.goForward()
     }
 
     func reload() {
         recoveryPolicy.userRequestedReload()
-        applyPendingPolicy()
+        preparePolicy(for: webView.url ?? currentURL)
         webView.reload()
     }
     func stopLoading() { webView.stopLoading() }
@@ -194,13 +235,13 @@ private final class BrowserSessionWebViewDelegate: NSObject, WKNavigationDelegat
         guard let session else { return .cancel }
         if navigationAction.shouldPerformDownload,
            BrowserDownloadResponsePolicy.allowsDownloadURL(navigationAction.request.url) {
-            session.applyPendingPolicy()
+            session.preparePolicy(for: navigationAction.request.url)
             return .download
         }
         switch URLPolicy(searchProvider: session.profile.searchProvider)
             .disposition(for: navigationAction.request.url) {
         case .web:
-            session.applyPendingPolicy()
+            session.preparePolicy(for: navigationAction.request.url)
             return .allow
         case .externalConfirmation:
             if let url = navigationAction.request.url {

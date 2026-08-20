@@ -39,6 +39,7 @@ Record pass/fail, device model, OS version, build number, tester, and evidence l
 | Cookie boundary | Website cookies do not appear in another profile or another device through Fireball sync |
 | Private boundary | Private tabs, private Archive entries, history, snapshots, and restore state do not appear after relaunch or on device two |
 | History opt-in | URL sync starts only after the disclosure is accepted; records older than 90 days disappear |
+| Per-site Shields | Exact-host exception applies only after navigation/reload, does not include a subdomain, remains isolated by profile, syncs for regular profiles, and never syncs or restores for private spaces |
 | Offline/reconnect | Browsing remains usable on the local replica and sync later recovers |
 | iCloud account change | Browser remains usable and clearly reports degraded/local sync state |
 | IPv6-only | Search, navigation, blocker update, and CloudKit sync remain functional |

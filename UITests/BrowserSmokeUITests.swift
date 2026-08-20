@@ -168,6 +168,29 @@ final class BrowserSmokeUITests: XCTestCase {
     }
 
     @MainActor
+    func testExactSiteShieldsCanBePausedAndAppliedOnReload() throws {
+        let app = launchApp()
+        let omnibox = app.textFields["browser.omnibox"]
+        omnibox.tap()
+        omnibox.typeText("https://example.com/shields")
+        app.buttons["browser.go"].tap()
+
+        let shields = app.buttons["browser.shields"]
+        XCTAssertTrue(shields.waitForExistence(timeout: 3))
+        XCTAssertEqual(shields.value as? String, "On")
+        shields.tap()
+        app.buttons["Pause Shields for example.com"].tap()
+
+        XCTAssertEqual(shields.value as? String, "Off, reload required")
+        shields.tap()
+        let reload = app.buttons["Reload to apply"]
+        XCTAssertTrue(reload.waitForExistence(timeout: 3))
+        reload.tap()
+
+        XCTAssertEqual(shields.value as? String, "Off")
+    }
+
+    @MainActor
     func testCaptureDocumentationMedia() throws {
         guard ProcessInfo.processInfo.environment["FIREBALL_CAPTURE_MEDIA"] == "1" else {
             throw XCTSkip("Documentation media is captured only by the explicit media workflow.")

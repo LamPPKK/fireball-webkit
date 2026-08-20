@@ -279,6 +279,48 @@ final class BrowserStoreTests: XCTestCase {
         XCTAssertFalse(originalSession.profile.blockerEnabled)
     }
 
+    func testSiteShieldsExceptionIsExactHostPersistentAndStagedWithoutReload() async throws {
+        let repository = InMemoryBrowserRepository(snapshot: .initial())
+        let store = makeStore(repository: repository)
+        await store.bootstrap()
+        let exactURL = try XCTUnwrap(URL(string: "https://example.com/form"))
+        _ = store.createTab(url: exactURL)
+        let originalSession = try XCTUnwrap(store.activeSession)
+
+        store.setShieldsEnabledForActiveSite(false)
+
+        XCTAssertTrue(originalSession === store.activeSession)
+        XCTAssertTrue(originalSession.hasPendingPolicyChange)
+        XCTAssertFalse(store.shieldsEnabledForActiveSite)
+        XCTAssertEqual(store.blockerSiteExceptions.map(\.host), ["example.com"])
+        let persisted = try await repository.load()
+        XCTAssertEqual(persisted.blockerSiteExceptions.map(\.host), ["example.com"])
+
+        _ = store.createTab(url: try XCTUnwrap(URL(string: "https://news.example.com/article")))
+
+        XCTAssertEqual(store.activeBlockerHost, "news.example.com")
+        XCTAssertTrue(store.shieldsEnabledForActiveSite)
+    }
+
+    func testPrivateSiteShieldsExceptionStaysInMemoryAndBurnsWithPrivateSpace() async throws {
+        let repository = InMemoryBrowserRepository(snapshot: .initial())
+        let store = makeStore(repository: repository)
+        await store.bootstrap()
+        store.createPrivateSpace()
+        try store.navigate("https://private.example/secret")
+        let privateProfileID = try XCTUnwrap(store.activeProfile?.id)
+
+        store.setShieldsEnabledForActiveSite(false)
+
+        XCTAssertTrue(store.blockerSiteExceptions.contains { $0.profileID == privateProfileID })
+        let persisted = try await repository.load()
+        XCTAssertTrue(persisted.blockerSiteExceptions.isEmpty)
+
+        store.closeTab(try XCTUnwrap(store.activeTab?.id))
+
+        XCTAssertFalse(store.blockerSiteExceptions.contains { $0.profileID == privateProfileID })
+    }
+
     func testContentProcessTerminationUsesTheCorrectActiveAndBackgroundSessions() async throws {
         let store = makeStore(repository: InMemoryBrowserRepository(snapshot: .initial()))
         await store.bootstrap()

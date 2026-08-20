@@ -174,20 +174,51 @@ final class BrowserSmokeUITests: XCTestCase {
         omnibox.tap()
         omnibox.typeText("https://example.com/shields")
         app.buttons["browser.go"].tap()
+        XCTAssertTrue(waitForDisappearance(of: app.keyboards.firstMatch, timeout: 3))
 
         let shields = app.buttons["browser.shields"]
         XCTAssertTrue(shields.waitForExistence(timeout: 3))
         XCTAssertEqual(shields.value as? String, "On")
-        shields.tap()
+        tapVisibleCenter(of: shields, in: app)
         app.buttons["Pause Shields for example.com"].tap()
 
         XCTAssertEqual(shields.value as? String, "Off, reload required")
-        shields.tap()
+        tapVisibleCenter(of: shields, in: app)
         let reload = app.buttons["Reload to apply"]
         XCTAssertTrue(reload.waitForExistence(timeout: 3))
         reload.tap()
 
         XCTAssertEqual(shields.value as? String, "Off")
+    }
+
+    private func waitForDisappearance(of element: XCUIElement, timeout: TimeInterval) -> Bool {
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"),
+            object: element
+        )
+        return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+    }
+
+    @MainActor
+    private func tapVisibleCenter(
+        of element: XCUIElement,
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let elementFrame = element.frame
+        let windowFrame = app.windows.firstMatch.frame
+        XCTAssertFalse(elementFrame.isEmpty, "Element has no visible frame", file: file, line: line)
+        let elementCenter = CGPoint(x: elementFrame.midX, y: elementFrame.midY)
+        XCTAssertTrue(
+            windowFrame.contains(elementCenter),
+            "Element center \(elementCenter) is outside window \(windowFrame)",
+            file: file,
+            line: line
+        )
+        // Xcode 16.4 cannot AX-scroll a visible SwiftUI Menu and reports a
+        // {-1, -1} hit point. Tap the verified on-screen center directly.
+        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     }
 
     @MainActor

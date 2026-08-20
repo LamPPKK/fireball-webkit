@@ -428,6 +428,12 @@ struct BrowserShellView: View {
         do {
             try store.navigate(address)
             focusedControl = nil
+            UIApplication.shared.sendAction(
+                #selector(UIResponder.resignFirstResponder),
+                to: nil,
+                from: nil,
+                for: nil
+            )
         } catch {
             store.errorMessage = error.localizedDescription
         }

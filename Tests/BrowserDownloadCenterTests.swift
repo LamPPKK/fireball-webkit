@@ -174,6 +174,7 @@ final class BrowserDownloadCenterTests: XCTestCase {
             profile: profile,
             dataStore: .nonPersistent()
         )
+        let downloadStarted = expectation(description: "WKWebView converted the response to a download")
         session.onDownloadStarted = { download, existingID in
             fixture.center.accept(
                 download,
@@ -182,17 +183,20 @@ final class BrowserDownloadCenterTests: XCTestCase {
                 isPrivate: false,
                 resuming: existingID
             )
+            downloadStarted.fulfill()
         }
 
         session.load(try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)/download")))
 
-        for _ in 0 ..< 100 where fixture.center.items.first?.state != .completed {
+        await fulfillment(of: [downloadStarted], timeout: 15)
+        for _ in 0 ..< 300 where fixture.center.items.first?.state != .completed {
             try await Task.sleep(for: .milliseconds(50))
         }
         let item = try XCTUnwrap(fixture.center.items.first)
         XCTAssertEqual(item.state, .completed)
         XCTAssertEqual(item.filename, "fireball-fixture.txt")
         XCTAssertEqual(try Data(contentsOf: item.destinationURL), expected)
+        withExtendedLifetime(session) {}
     }
 
     private func makeFixture() throws -> Fixture {

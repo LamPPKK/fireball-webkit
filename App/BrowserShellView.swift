@@ -427,6 +427,7 @@ struct BrowserShellView: View {
     private func navigate() {
         do {
             try store.navigate(address)
+            focusedControl = nil
         } catch {
             store.errorMessage = error.localizedDescription
         }

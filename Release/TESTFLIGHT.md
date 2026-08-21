@@ -87,4 +87,9 @@ Record pass/fail, device model, OS version, build number, tester, and evidence l
 
 ## Go/no-go
 
-The gate passes only after Apple Beta App Review accepts the build, every device row passes, and there is no open P0/P1 issue, reproducible data loss, or reproducible crash. Until then, keep `fireball-blink`, XanhTab, and `fireball-docker` frozen except for urgent security fixes.
+The gate passes only after Apple Beta App Review accepts the build, every device
+row passes, and there is no open P0/P1 issue, reproducible data loss, or
+reproducible crash. Until then, WebKit remains the release priority and the
+portfolio must not promote Blink as the successor product track. Independent
+foundation/security work and the Docker/XanhTab gates may continue, but none of
+their evidence satisfies this TestFlight gate.

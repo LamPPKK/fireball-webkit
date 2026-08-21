@@ -65,7 +65,9 @@ No Midori patch was copied automatically. Any future source reuse must record th
 2. Fix only beta-blocking defects discovered by that gate. The new share and process-recovery paths are part of the 100-cycle navigation/tab-switching and memory-pressure checks.
 3. After external beta acceptance, decide whether provider-neutral encrypted metadata export is valuable enough for a separate threat model and format specification.
 4. Keep password sync and credential filling closed until a dedicated security workstream exists.
-5. Start Fireball Blink only after the WebKit gate passes, as required by the main roadmap.
+5. Promote Fireball Blink as the next product track only after the WebKit gate
+   passes. Protected-builder, provenance, policy, and host-testable foundation
+   work may continue without being represented as a Linux alpha.
 
 ## Interfaces and invariants
 

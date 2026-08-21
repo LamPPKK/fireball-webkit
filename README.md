@@ -152,7 +152,11 @@ artifact and separate Apple-side processing/review evidence.
 
 External Beta App Review, two-device iCloud isolation, physical-device accessibility, IPv6-only, memory-pressure, and stability checks remain release gates. Follow [Release/TESTFLIGHT.md](Release/TESTFLIGHT.md) and attach evidence to the exact uploaded IPA.
 
-Fireball Blink remains frozen until this gate passes. XanhTab and `fireball-docker` remain outside this roadmap except for urgent security fixes.
+WebKit remains the portfolio's release priority until this gate passes. Blink
+may continue protected-builder, provenance, policy, and other foundation work,
+but its Linux product promotion does not replace this TestFlight gate. XanhTab
+and `fireball-docker` follow their own hardware and OCI gates; their evidence
+must not be presented as WebKit beta progress.
 
 ## Repository map
 

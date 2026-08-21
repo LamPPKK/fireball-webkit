@@ -15,13 +15,20 @@ touch targets. Product tokens and component rules are recorded in
 [`design-system/fireball-webkit/MASTER.md`](design-system/fireball-webkit/MASTER.md)
 and [`pages/browser-shell.md`](design-system/fireball-webkit/pages/browser-shell.md).
 
-![Fireball tab grid on iPad](docs/assets/fireball-ipad-tabs.png)
+<a href="docs/assets/fireball-webkit-showcase.png">
+  <img src="docs/assets/fireball-webkit-showcase.png" width="100%" alt="Fireball WebKit native home, tab grid, and privacy settings on iPhone">
+</a>
+
+<sub>Native home · Profile/Space tab grid · Per-profile privacy settings. Open the image for the full-resolution showcase.</sub>
 
 Marketing version `0.1.0` · Bundle identifier `com.fireball.browser` · Default search Brave Search · External TestFlight candidate
 
 ## Demo and screenshots
 
 [▶ Watch the 12-second Simulator demo](docs/assets/fireball-demo.mp4)
+
+The showcase above is a lossless contact sheet made from the three current
+iPhone captures below. Each original remains available at full resolution.
 
 | Native home | Tab grid | Privacy settings |
 | --- | --- | --- |

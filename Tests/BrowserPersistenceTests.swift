@@ -4,6 +4,16 @@ import XCTest
 
 @MainActor
 final class BrowserPersistenceTests: XCTestCase {
+    func testBrandNewRepositoryUsesTheStableDefaultProfile() async throws {
+        let repository = CoreDataBrowserRepository(inMemory: true, cloudKitEnabled: false)
+
+        let snapshot = try await repository.load()
+
+        XCTAssertEqual(snapshot.profiles.map(\.id), [BrowserProfile.defaultID])
+        XCTAssertEqual(snapshot.profiles.map(\.name), ["Default"])
+        XCTAssertTrue(snapshot.profileDeletionCleanups.isEmpty)
+    }
+
     func testCloudAccountStatusAlwaysKeepsBrowsingAvailableLocally() {
         XCTAssertEqual(CoreDataBrowserRepository.syncStatus(for: .available), .available)
         XCTAssertEqual(
@@ -200,6 +210,37 @@ final class BrowserPersistenceTests: XCTestCase {
         XCTAssertTrue(recovered.profileDeletionCleanups.allSatisfy { !$0.isComplete })
         XCTAssertTrue(recovered.settings.historySyncEnabled)
         XCTAssertEqual(recovered.settings.automaticArchiveInterval, .thirtyDays)
+    }
+
+    func testPreviouslyUsedZeroProfileStoreNeverResurrectsDefaultAfterTombstoneExpiry() async throws {
+        var clock = Date(timeIntervalSince1970: 1_700_000_000)
+        let repository = CoreDataBrowserRepository(
+            inMemory: true,
+            cloudKitEnabled: false,
+            currentDate: { clock }
+        )
+        var snapshot = try await repository.load()
+        snapshot.profiles = []
+        snapshot.spaces = []
+        snapshot.tabs = []
+        snapshot.profileDeletionCleanups = [
+            ProfileDeletionCleanup(
+                profileID: BrowserProfile.defaultID,
+                websiteDataRemoved: true,
+                keychainLockRemoved: true,
+                createdAt: clock,
+                modifiedAt: clock
+            ),
+        ]
+        try repository.save(snapshot)
+
+        clock = clock.addingTimeInterval(31 * 24 * 60 * 60)
+        let recovered = try await repository.load()
+
+        let recoveredProfile = try XCTUnwrap(recovered.profiles.first)
+        XCTAssertEqual(recovered.profiles.count, 1)
+        XCTAssertNotEqual(recoveredProfile.id, BrowserProfile.defaultID)
+        XCTAssertTrue(recovered.profileDeletionCleanups.isEmpty)
     }
 
     func testHistoryMovesBetweenLocalAndSyncedStoresWithoutDataLoss() async throws {

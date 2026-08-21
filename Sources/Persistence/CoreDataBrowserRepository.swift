@@ -35,6 +35,7 @@ final class CoreDataBrowserRepository: BrowserRepository {
     private let cloudKitEnabled: Bool
     private let accountContainer: CKContainer?
     private let beforeContextSave: (() throws -> Void)?
+    private let currentDate: () -> Date
     private var didLoadStores = false
     private var remoteChangeObserver: NotificationObserverToken?
     private var cloudEventObserver: NotificationObserverToken?
@@ -47,10 +48,12 @@ final class CoreDataBrowserRepository: BrowserRepository {
     init(
         inMemory: Bool = false,
         cloudKitEnabled: Bool = true,
-        beforeContextSave: (() throws -> Void)? = nil
+        beforeContextSave: (() throws -> Void)? = nil,
+        currentDate: @escaping () -> Date = { .now }
     ) {
         self.cloudKitEnabled = cloudKitEnabled && !inMemory
         self.beforeContextSave = beforeContextSave
+        self.currentDate = currentDate
         accountContainer = self.cloudKitEnabled
             ? CKContainer(identifier: Self.cloudContainerIdentifier)
             : nil
@@ -70,16 +73,34 @@ final class CoreDataBrowserRepository: BrowserRepository {
         if !didLoadStores {
             try await loadStores()
         }
+        let hasStoredRecords = try hasStoredRecords(context: container.viewContext)
         let snapshot = try decodeSnapshot()
         if snapshot.profiles.isEmpty {
-            let recovery = recoverySnapshot(
+            if !hasStoredRecords {
+                let initial = BrowserSnapshot.initial(now: currentDate())
+                try save(initial)
+                return initial
+            }
+            let recovered = recoverySnapshot(
                 retaining: snapshot.profileDeletionCleanups,
-                settings: snapshot.settings
+                settings: snapshot.settings,
+                now: currentDate()
             )
-            try save(recovery)
-            return recovery
+            try save(recovered)
+            return recovered
         }
         return snapshot
+    }
+
+    private func hasStoredRecords(context: NSManagedObjectContext) throws -> Bool {
+        for entityName in [Entity.synced, Entity.local] {
+            let request = NSFetchRequest<NSFetchRequestResult>(entityName: entityName)
+            request.fetchLimit = 1
+            if try context.count(for: request) > 0 {
+                return true
+            }
+        }
+        return false
     }
 
     private func recoverySnapshot(
@@ -123,7 +144,7 @@ final class CoreDataBrowserRepository: BrowserRepository {
 
     func save(_ snapshot: BrowserSnapshot) throws {
         guard didLoadStores else { throw BrowserPersistenceError.storeNotLoaded }
-        let now = Date.now
+        let now = currentDate()
         let context = container.viewContext
         var committed = false
         defer {
@@ -364,7 +385,7 @@ final class CoreDataBrowserRepository: BrowserRepository {
         let settings = try decodeLatest(BrowserSettings.self, kind: .settings, entityName: Entity.synced, context: context)
             .first ?? BrowserSettings()
         let historyEntity = settings.historySyncEnabled ? Entity.synced : Entity.local
-        let cutoff = Date.now.addingTimeInterval(-90 * 24 * 60 * 60)
+        let cutoff = currentDate().addingTimeInterval(-90 * 24 * 60 * 60)
         let profiles = try decodeLatest(BrowserProfile.self, kind: .profile, entityName: Entity.synced, context: context)
         let persistentProfileIDs = Set(profiles.filter { $0.storageMode == .persistent }.map(\.id))
         let profileDeletionCleanups = try profileDeletionCleanups(
@@ -404,7 +425,7 @@ final class CoreDataBrowserRepository: BrowserRepository {
         activeProfileIDs: Set<ProfileID>,
         context: NSManagedObjectContext
     ) throws -> [ProfileDeletionCleanup] {
-        let cutoff = Date.now.addingTimeInterval(-Self.tombstoneLifetime)
+        let cutoff = currentDate().addingTimeInterval(-Self.tombstoneLifetime)
         let tombstones = Dictionary(
             grouping: try records(kind: .profile, entityName: Entity.synced, context: context),
             by: { $0.value(forKey: "recordID") as? String ?? "" }

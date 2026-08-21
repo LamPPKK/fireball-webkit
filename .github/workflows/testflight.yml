@@ -79,29 +79,51 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
       - name: Test and validate exact IPA
+        id: exact_ipa
         env:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           BLOCKER_PUBLIC_KEY_BASE64: ${{ secrets.BLOCKER_PUBLIC_KEY_BASE64 }}
         run: |
-          ipa="$(find "$RUNNER_TEMP/export" -maxdepth 1 -name '*.ipa' -print -quit)"
-          test -n "$ipa"
+          ipa="$(python3 Tools/release_evidence.py select-ipa --directory "$RUNNER_TEMP/export")"
+          read -r expected_sha256 expected_size_bytes < <(
+            python3 Tools/release_evidence.py identify-ipa --ipa "$ipa"
+          )
           python3 Tools/verify_ipa.py \
             --ipa "$ipa" \
             --bundle-id com.fireball.browser \
             --version 0.1.0 \
             --build "${{ github.run_number }}" \
             --blocker-public-key-base64 "$BLOCKER_PUBLIC_KEY_BASE64"
-          shasum -a 256 "$ipa" > "$RUNNER_TEMP/FireballWebKit.ipa.sha256"
+          printf '%s  %s\n' "$expected_sha256" "$ipa" > "$RUNNER_TEMP/FireballWebKit.ipa.sha256"
           xcrun altool --validate-app -f "$ipa" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+          {
+            printf 'path=%s\n' "$ipa"
+            printf 'sha256=%s\n' "$expected_sha256"
+            printf 'size_bytes=%s\n' "$expected_size_bytes"
+          } >> "$GITHUB_OUTPUT"
       - name: Upload exact validated IPA
         env:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
         run: |
-          ipa="$(find "$RUNNER_TEMP/export" -maxdepth 1 -name '*.ipa' -print -quit)"
+          ipa="${{ steps.exact_ipa.outputs.path }}"
           shasum -a 256 --check "$RUNNER_TEMP/FireballWebKit.ipa.sha256"
           xcrun altool --upload-app -f "$ipa" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+      - name: Record candidate evidence
+        run: |
+          python3 Tools/release_evidence.py create \
+            --ipa "${{ steps.exact_ipa.outputs.path }}" \
+            --output "$RUNNER_TEMP/release-evidence-v1.json" \
+            --repository "${{ github.repository }}" \
+            --commit "${{ github.sha }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --build "${{ github.run_number }}" \
+            --expected-sha256 "${{ steps.exact_ipa.outputs.sha256 }}" \
+            --expected-size-bytes "${{ steps.exact_ipa.outputs.size_bytes }}"
+          python3 Tools/release_evidence.py validate \
+            --input "$RUNNER_TEMP/release-evidence-v1.json"
       - uses: actions/upload-artifact@v7
         with:
           name: Fireball-WebKit-${{ github.run_number }}
@@ -110,6 +132,10 @@ jobs:
             ${{ runner.temp }}/export/*.ipa
             ${{ runner.temp }}/FireballWebKit.ipa.sha256
             ${{ runner.temp }}/FireballWebKit.entitlements.plist
+            ${{ runner.temp }}/release-evidence-v1.json
+            Release/evidence-v1.schema.json
+            Release/evidence-v1.corpus.json
+            Release/evidence-v1.invariants.md
           retention-days: 14
       - name: Remove App Store Connect key
         if: always()

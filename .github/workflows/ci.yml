@@ -47,11 +47,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: python3 -m unittest discover -s Tools/tests
-      - run: python3 -m py_compile Tools/blocker_release_version.py Tools/build_blocker.py Tools/create_blocker_manifest.py Tools/release_preflight.py Tools/select_simulator.py Tools/verify_entitlements.py Tools/verify_ipa.py
+      - run: python3 -m py_compile Tools/blocker_release_version.py Tools/build_blocker.py Tools/create_blocker_manifest.py Tools/release_evidence.py Tools/release_preflight.py Tools/select_simulator.py Tools/verify_entitlements.py Tools/verify_ipa.py
+      - run: python3 Tools/release_evidence.py validate-corpus --input Release/evidence-v1.corpus.json
 
   configuration:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
       - run: plutil -lint Resources/PrivacyInfo.xcprivacy Config/*.plist Config/*.entitlements
+      - run: python3 -m json.tool Release/evidence-v1.schema.json
+      - run: python3 -m json.tool Release/evidence-v1.corpus.json
       - run: git diff --check

@@ -23,7 +23,38 @@ For each candidate, retain:
 - `altool` validation and upload result.
 - App Store Connect processing result and TestFlight build identifier.
 
-The workflow archives once, verifies the distribution signature and production entitlements, exports once, checks bundle/version/build metadata, production flags, iPhone/iPad support, privacy declarations, the exact blocker public key and absence of packaged private-key files, records the IPA checksum, and uploads that same file.
+The workflow archives once, verifies the distribution signature and production
+entitlements, exports once, requires exactly one safe-named regular IPA, checks
+bundle/version/build metadata, production flags, iPhone/iPad support, privacy
+declarations, the exact blocker public key and absence of packaged private-key
+files, records the IPA checksum, and uploads that same path only after its
+checksum is revalidated.
+
+After the upload command succeeds, the workflow reopens the IPA and requires its
+digest and byte size to match the identity locked before upload. It then emits
+`release-evidence-v1.json` beside that IPA and checksum. The
+[`evidence-v1` schema](evidence-v1.schema.json) is the portable structural
+contract; `Tools/release_evidence.py validate` is normative for cross-field URL
+identity and real calendar timestamps. CI runs the published
+[`evidence-v1` conformance corpus](evidence-v1.corpus.json), whose invariants are
+[documented separately](evidence-v1.invariants.md).
+
+Validate a downloaded candidate and the normative corpus with:
+
+```sh
+python3 Tools/release_evidence.py validate \
+  --input release-evidence-v1.json
+
+python3 Tools/release_evidence.py validate-corpus \
+  --input Release/evidence-v1.corpus.json
+```
+
+The v1 format is candidate-only and has no command or field that can claim App
+Store processing, a TestFlight build identifier, or Beta App Review. Record those
+results as separate Apple-side evidence in the device matrix. The JSON proves
+consistency, not authorship: accept it only when retrieved with the artifact from
+the referenced protected workflow run. Candidate evidence alone never passes
+this gate.
 
 ## Required device evidence
 

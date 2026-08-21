@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "name": "valid-uploaded-candidate",
+      "valid": true,
+      "document": {
+        "schemaVersion": 1,
+        "product": "fireball-webkit",
+        "repository": "LamPPKK/fireball-webkit",
+        "commitSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "workflow": {
+          "runId": 32434697404,
+          "attempt": 1,
+          "url": "https://github.com/LamPPKK/fireball-webkit/actions/runs/32434697404/attempts/1"
+        },
+        "app": {
+          "bundleIdentifier": "com.fireball.browser",
+          "marketingVersion": "0.1.0",
+          "buildNumber": "42"
+        },
+        "ipa": {
+          "fileName": "FireballWebKit.ipa",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "sizeBytes": 23
+        },
+        "validation": { "tool": "xcrun altool", "status": "passed" },
+        "upload": { "tool": "xcrun altool", "status": "accepted" },
+        "releaseStatus": "candidate",
+        "createdAt": "2026-08-21T01:02:03Z"
+      }
+    },
+    {
+      "name": "reject-cross-field-workflow-url",
+      "valid": false,
+      "document": {
+        "schemaVersion": 1,
+        "product": "fireball-webkit",
+        "repository": "LamPPKK/fireball-webkit",
+        "commitSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "workflow": {
+          "runId": 32434697404,
+          "attempt": 1,
+          "url": "https://github.com/LamPPKK/fireball-webkit/actions/runs/999/attempts/1"
+        },
+        "app": {
+          "bundleIdentifier": "com.fireball.browser",
+          "marketingVersion": "0.1.0",
+          "buildNumber": "42"
+        },
+        "ipa": {
+          "fileName": "FireballWebKit.ipa",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "sizeBytes": 23
+        },
+        "validation": { "tool": "xcrun altool", "status": "passed" },
+        "upload": { "tool": "xcrun altool", "status": "accepted" },
+        "releaseStatus": "candidate",
+        "createdAt": "2026-08-21T01:02:03Z"
+      }
+    },
+    {
+      "name": "reject-impossible-calendar-date",
+      "valid": false,
+      "document": {
+        "schemaVersion": 1,
+        "product": "fireball-webkit",
+        "repository": "LamPPKK/fireball-webkit",
+        "commitSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "workflow": {
+          "runId": 32434697404,
+          "attempt": 1,
+          "url": "https://github.com/LamPPKK/fireball-webkit/actions/runs/32434697404/attempts/1"
+        },
+        "app": {
+          "bundleIdentifier": "com.fireball.browser",
+          "marketingVersion": "0.1.0",
+          "buildNumber": "42"
+        },
+        "ipa": {
+          "fileName": "FireballWebKit.ipa",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "sizeBytes": 23
+        },
+        "validation": { "tool": "xcrun altool", "status": "passed" },
+        "upload": { "tool": "xcrun altool", "status": "accepted" },
+        "releaseStatus": "candidate",
+        "createdAt": "2026-02-30T01:02:03Z"
+      }
+    },
+    {
+      "name": "reject-app-store-claim",
+      "valid": false,
+      "document": {
+        "schemaVersion": 1,
+        "product": "fireball-webkit",
+        "repository": "LamPPKK/fireball-webkit",
+        "commitSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "workflow": {
+          "runId": 32434697404,
+          "attempt": 1,
+          "url": "https://github.com/LamPPKK/fireball-webkit/actions/runs/32434697404/attempts/1"
+        },
+        "app": {
+          "bundleIdentifier": "com.fireball.browser",
+          "marketingVersion": "0.1.0",
+          "buildNumber": "42"
+        },
+        "ipa": {
+          "fileName": "FireballWebKit.ipa",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "sizeBytes": 23
+        },
+        "validation": { "tool": "xcrun altool", "status": "passed" },
+        "upload": { "tool": "xcrun altool", "status": "accepted" },
+        "releaseStatus": "accepted",
+        "createdAt": "2026-08-21T01:02:03Z"
+      }
+    },
+    {
+      "name": "reject-unknown-field",
+      "valid": false,
+      "document": {
+        "schemaVersion": 1,
+        "product": "fireball-webkit",
+        "repository": "LamPPKK/fireball-webkit",
+        "commitSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "workflow": {
+          "runId": 32434697404,
+          "attempt": 1,
+          "url": "https://github.com/LamPPKK/fireball-webkit/actions/runs/32434697404/attempts/1"
+        },
+        "app": {
+          "bundleIdentifier": "com.fireball.browser",
+          "marketingVersion": "0.1.0",
+          "buildNumber": "42"
+        },
+        "ipa": {
+          "fileName": "FireballWebKit.ipa",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "sizeBytes": 23
+        },
+        "validation": { "tool": "xcrun altool", "status": "passed" },
+        "upload": { "tool": "xcrun altool", "status": "accepted" },
+        "releaseStatus": "candidate",
+        "createdAt": "2026-08-21T01:02:03Z",
+        "appStoreProcessing": "passed"
+      }
+    }
+  ]
+}

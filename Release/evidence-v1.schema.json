@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lamppkk.github.io/fireball-webkit/release-evidence-v1.schema.json",
+  "title": "Fireball WebKit release evidence v1",
+  "description": "Structural schema for an uploaded TestFlight candidate. Tools/release_evidence.py is the normative validator for cross-field URL equality and real calendar timestamps. This document does not record App Store processing or Beta Review.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "product",
+    "repository",
+    "commitSha",
+    "workflow",
+    "app",
+    "ipa",
+    "validation",
+    "upload",
+    "releaseStatus",
+    "createdAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "product": { "const": "fireball-webkit" },
+    "repository": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$"
+    },
+    "commitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "attempt", "url"],
+      "properties": {
+        "runId": { "type": "integer", "minimum": 1 },
+        "attempt": { "type": "integer", "minimum": 1 },
+        "url": {
+          "type": "string",
+          "pattern": "^https://github\\.com/[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}/actions/runs/[1-9][0-9]*/attempts/[1-9][0-9]*$"
+        }
+      }
+    },
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundleIdentifier", "marketingVersion", "buildNumber"],
+      "properties": {
+        "bundleIdentifier": { "const": "com.fireball.browser" },
+        "marketingVersion": { "const": "0.1.0" },
+        "buildNumber": { "type": "string", "pattern": "^[1-9][0-9]{0,17}$" }
+      }
+    },
+    "ipa": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "sha256", "sizeBytes"],
+      "properties": {
+        "fileName": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,126}\\.ipa$"
+        },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "sizeBytes": { "type": "integer", "minimum": 1, "maximum": 8589934592 }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "status"],
+      "properties": {
+        "tool": { "const": "xcrun altool" },
+        "status": { "const": "passed" }
+      }
+    },
+    "upload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "status"],
+      "properties": {
+        "tool": { "const": "xcrun altool" },
+        "status": { "const": "accepted" }
+      }
+    },
+    "releaseStatus": { "const": "candidate" },
+    "createdAt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
+    }
+  }
+}

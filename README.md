@@ -135,7 +135,20 @@ The protected `testflight` environment requires:
 - `CLOUDKIT_SCHEMA_PROMOTED=true` only after the development schema is promoted to production;
 - manual approval before archive and upload.
 
-Release CI archives once, verifies the signature and production entitlements, exports once, inspects the exact IPA, records its SHA-256 checksum, validates it with App Store Connect, and uploads that same file without rebuilding.
+Release CI archives once, verifies the signature and production entitlements,
+exports exactly one safe-named regular IPA, inspects it, records its SHA-256
+checksum, validates it with App Store Connect, and uploads that same path only
+after rechecking the checksum. A successful upload also emits a strict
+[`release-evidence-v1.json`](Release/evidence-v1.schema.json) candidate that
+binds the IPA digest and size to the exact commit, workflow run, attempt, build
+number, validation result, and upload result. Candidate creation must rehash the
+IPA after upload and match both the digest and size locked before upload. The v1
+record always remains `candidate`; it never infers App Store processing or Beta
+App Review. The JSON Schema is structural, while the executable validator and
+[published invariant corpus](Release/evidence-v1.invariants.md) are normative
+for cross-field identity. This is a consistency record, not a standalone
+cryptographic attestation; trust it only with the referenced protected workflow
+artifact and separate Apple-side processing/review evidence.
 
 External Beta App Review, two-device iCloud isolation, physical-device accessibility, IPv6-only, memory-pressure, and stability checks remain release gates. Follow [Release/TESTFLIGHT.md](Release/TESTFLIGHT.md) and attach evidence to the exact uploaded IPA.
 

@@ -3,7 +3,7 @@ name: pages
 on:
   push:
     branches: [main]
-    paths: [docs/**, Blocker/manifest.schema.json, .github/workflows/pages.yml]
+    paths: [docs/**, Blocker/manifest.schema.json, Release/evidence-v1.*, .github/workflows/pages.yml]
   workflow_dispatch:
 
 permissions:
@@ -30,6 +30,9 @@ jobs:
           mkdir -p site/blocker
           cp -R docs/. site/
           cp Blocker/manifest.schema.json site/blocker-manifest-v1.schema.json
+          cp Release/evidence-v1.schema.json site/release-evidence-v1.schema.json
+          cp Release/evidence-v1.corpus.json site/release-evidence-v1.corpus.json
+          cp Release/evidence-v1.invariants.md site/release-evidence-v1.invariants.md
           gh release list --limit 100 --json tagName > "$RUNNER_TEMP/blocker-releases.json"
           tag="$(python3 Tools/blocker_release_version.py \
             --releases-json "$RUNNER_TEMP/blocker-releases.json" \

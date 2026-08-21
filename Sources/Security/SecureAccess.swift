@@ -123,10 +123,14 @@ final class KeychainProfileLockStore: ProfileLocking {
             kSecAttrService: service,
             kSecAttrAccount: account(profileID),
         ] as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound || status == errSecInteractionNotAllowed else {
+        guard Self.isTerminalDeletionStatus(status) else {
             throw SecureAccessError.keychain(status)
         }
         defaults.removeObject(forKey: enabledKey(profileID))
+    }
+
+    static func isTerminalDeletionStatus(_ status: OSStatus) -> Bool {
+        status == errSecSuccess || status == errSecItemNotFound
     }
 
     func unlock(profileID: ProfileID, reason: String) async throws {

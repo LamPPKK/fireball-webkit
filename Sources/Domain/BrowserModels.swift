@@ -253,6 +253,32 @@ struct HistoryVisit: Identifiable, Hashable, Codable, Sendable {
     var modifiedAt: Date
 }
 
+struct ProfileDeletionCleanup: Hashable, Codable, Sendable {
+    let profileID: ProfileID
+    var websiteDataRemoved: Bool
+    var keychainLockRemoved: Bool
+    let createdAt: Date
+    var modifiedAt: Date
+
+    init(
+        profileID: ProfileID,
+        websiteDataRemoved: Bool = false,
+        keychainLockRemoved: Bool = false,
+        createdAt: Date = .now,
+        modifiedAt: Date = .now
+    ) {
+        self.profileID = profileID
+        self.websiteDataRemoved = websiteDataRemoved
+        self.keychainLockRemoved = keychainLockRemoved
+        self.createdAt = createdAt
+        self.modifiedAt = modifiedAt
+    }
+
+    var isComplete: Bool {
+        websiteDataRemoved && keychainLockRemoved
+    }
+}
+
 struct BrowserSettings: Hashable, Codable, Sendable {
     var historySyncEnabled = false
     var lastSelectedSpaceID: SpaceID?
@@ -268,6 +294,7 @@ struct BrowserSnapshot: Hashable, Codable, Sendable {
     var blockerSiteExceptions: [BlockerSiteException]
     var bookmarks: [Bookmark]
     var history: [HistoryVisit]
+    var profileDeletionCleanups: [ProfileDeletionCleanup] = []
     var settings: BrowserSettings
 
     static func initial(now: Date = .now) -> BrowserSnapshot {
@@ -289,6 +316,7 @@ struct BrowserSnapshot: Hashable, Codable, Sendable {
             blockerSiteExceptions: [],
             bookmarks: [],
             history: [],
+            profileDeletionCleanups: [],
             settings: BrowserSettings(modifiedAt: now)
         )
     }
@@ -303,6 +331,7 @@ extension BrowserSnapshot {
         case blockerSiteExceptions
         case bookmarks
         case history
+        case profileDeletionCleanups
         case settings
     }
 
@@ -318,6 +347,10 @@ extension BrowserSnapshot {
         ) ?? []
         bookmarks = try container.decode([Bookmark].self, forKey: .bookmarks)
         history = try container.decode([HistoryVisit].self, forKey: .history)
+        profileDeletionCleanups = try container.decodeIfPresent(
+            [ProfileDeletionCleanup].self,
+            forKey: .profileDeletionCleanups
+        ) ?? []
         settings = try container.decode(BrowserSettings.self, forKey: .settings)
     }
 
@@ -330,6 +363,7 @@ extension BrowserSnapshot {
         try container.encode(blockerSiteExceptions, forKey: .blockerSiteExceptions)
         try container.encode(bookmarks, forKey: .bookmarks)
         try container.encode(history, forKey: .history)
+        try container.encode(profileDeletionCleanups, forKey: .profileDeletionCleanups)
         try container.encode(settings, forKey: .settings)
     }
 }

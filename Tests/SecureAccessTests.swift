@@ -1,8 +1,17 @@
 import Foundation
+import Security
 import XCTest
 @testable import FireballWebKit
 
+@MainActor
 final class SecureAccessTests: XCTestCase {
+    func testOnlyConfirmedKeychainDeletionStatusesAreTerminal() {
+        XCTAssertTrue(KeychainProfileLockStore.isTerminalDeletionStatus(errSecSuccess))
+        XCTAssertTrue(KeychainProfileLockStore.isTerminalDeletionStatus(errSecItemNotFound))
+        XCTAssertFalse(KeychainProfileLockStore.isTerminalDeletionStatus(errSecInteractionNotAllowed))
+        XCTAssertFalse(KeychainProfileLockStore.isTerminalDeletionStatus(errSecAuthFailed))
+    }
+
     func testAuthenticationCancellationIsPropagated() async {
         let authenticator = FakeOwnerAuthenticator(result: .failure(CancellationError()))
         do {

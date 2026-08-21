@@ -24,6 +24,7 @@ final class CoreDataBrowserRepository: BrowserRepository {
         case blockerSiteException = "blocker_site_exception"
         case bookmark
         case history
+        case profileDeletionCleanup = "profile_deletion_cleanup"
         case settings
     }
 
@@ -33,6 +34,7 @@ final class CoreDataBrowserRepository: BrowserRepository {
     private let container: NSPersistentCloudKitContainer
     private let cloudKitEnabled: Bool
     private let accountContainer: CKContainer?
+    private let beforeContextSave: (() throws -> Void)?
     private var didLoadStores = false
     private var remoteChangeObserver: NotificationObserverToken?
     private var cloudEventObserver: NotificationObserverToken?
@@ -42,8 +44,13 @@ final class CoreDataBrowserRepository: BrowserRepository {
     var onExternalChange: (@MainActor @Sendable () -> Void)?
     var onSyncStatusChange: (@MainActor @Sendable (BrowserSyncStatus) -> Void)?
 
-    init(inMemory: Bool = false, cloudKitEnabled: Bool = true) {
+    init(
+        inMemory: Bool = false,
+        cloudKitEnabled: Bool = true,
+        beforeContextSave: (() throws -> Void)? = nil
+    ) {
         self.cloudKitEnabled = cloudKitEnabled && !inMemory
+        self.beforeContextSave = beforeContextSave
         accountContainer = self.cloudKitEnabled
             ? CKContainer(identifier: Self.cloudContainerIdentifier)
             : nil
@@ -65,17 +72,65 @@ final class CoreDataBrowserRepository: BrowserRepository {
         }
         let snapshot = try decodeSnapshot()
         if snapshot.profiles.isEmpty {
-            let initial = BrowserSnapshot.initial()
-            try save(initial)
-            return initial
+            let recovery = recoverySnapshot(
+                retaining: snapshot.profileDeletionCleanups,
+                settings: snapshot.settings
+            )
+            try save(recovery)
+            return recovery
         }
         return snapshot
+    }
+
+    private func recoverySnapshot(
+        retaining cleanups: [ProfileDeletionCleanup],
+        settings existingSettings: BrowserSettings,
+        now: Date = .now
+    ) -> BrowserSnapshot {
+        let profile = BrowserProfile(
+            id: ProfileID(),
+            name: "Recovered",
+            colorHex: "67F58A",
+            storageMode: .persistent,
+            searchProvider: .brave,
+            blockerEnabled: true,
+            modifiedAt: now
+        )
+        let space = BrowserSpace(
+            id: SpaceID(),
+            profileID: profile.id,
+            name: "Main",
+            sortIndex: 0,
+            selectedTabID: nil,
+            storageMode: .persistent,
+            modifiedAt: now
+        )
+        var settings = existingSettings
+        settings.lastSelectedSpaceID = space.id
+        settings.modifiedAt = now
+        return BrowserSnapshot(
+            profiles: [profile],
+            spaces: [space],
+            tabs: [],
+            archivedTabs: [],
+            blockerSiteExceptions: [],
+            bookmarks: [],
+            history: [],
+            profileDeletionCleanups: cleanups.filter { $0.profileID != profile.id },
+            settings: settings
+        )
     }
 
     func save(_ snapshot: BrowserSnapshot) throws {
         guard didLoadStores else { throw BrowserPersistenceError.storeNotLoaded }
         let now = Date.now
         let context = container.viewContext
+        var committed = false
+        defer {
+            if !committed {
+                context.rollback()
+            }
+        }
 
         try replace(
             kind: .profile,
@@ -148,6 +203,17 @@ final class CoreDataBrowserRepository: BrowserRepository {
             context: context,
             now: now
         )
+        try replace(
+            kind: .profileDeletionCleanup,
+            values: snapshot.profileDeletionCleanups.filter {
+                !persistentProfileIDs.contains($0.profileID)
+            },
+            id: { $0.profileID.rawValue.uuidString },
+            modifiedAt: { $0.modifiedAt },
+            entityName: Entity.local,
+            context: context,
+            now: now
+        )
 
         let historyDestination = snapshot.settings.historySyncEnabled ? Entity.synced : Entity.local
         let historySource = snapshot.settings.historySyncEnabled ? Entity.local : Entity.synced
@@ -172,8 +238,10 @@ final class CoreDataBrowserRepository: BrowserRepository {
 
         try purgeExpiredTombstones(in: context, now: now)
         if context.hasChanges {
+            try beforeContextSave?()
             try context.save()
         }
+        committed = true
     }
 
     private func loadStores() async throws {
@@ -299,6 +367,10 @@ final class CoreDataBrowserRepository: BrowserRepository {
         let cutoff = Date.now.addingTimeInterval(-90 * 24 * 60 * 60)
         let profiles = try decodeLatest(BrowserProfile.self, kind: .profile, entityName: Entity.synced, context: context)
         let persistentProfileIDs = Set(profiles.filter { $0.storageMode == .persistent }.map(\.id))
+        let profileDeletionCleanups = try profileDeletionCleanups(
+            activeProfileIDs: persistentProfileIDs,
+            context: context
+        )
         let blockerSiteExceptions = try decodeLatest(
             BlockerSiteException.self,
             kind: .blockerSiteException,
@@ -323,8 +395,55 @@ final class CoreDataBrowserRepository: BrowserRepository {
             bookmarks: try decodeLatest(Bookmark.self, kind: .bookmark, entityName: Entity.synced, context: context),
             history: try decodeLatest(HistoryVisit.self, kind: .history, entityName: historyEntity, context: context)
                 .filter { $0.visitedAt >= cutoff },
+            profileDeletionCleanups: profileDeletionCleanups,
             settings: settings
         )
+    }
+
+    private func profileDeletionCleanups(
+        activeProfileIDs: Set<ProfileID>,
+        context: NSManagedObjectContext
+    ) throws -> [ProfileDeletionCleanup] {
+        let cutoff = Date.now.addingTimeInterval(-Self.tombstoneLifetime)
+        let tombstones = Dictionary(
+            grouping: try records(kind: .profile, entityName: Entity.synced, context: context),
+            by: { $0.value(forKey: "recordID") as? String ?? "" }
+        ).values.compactMap { candidates -> (ProfileID, Date)? in
+            guard let latest = candidates.max(by: Self.isOlder),
+                  let deletedAt = latest.value(forKey: "deletedAt") as? Date,
+                  deletedAt >= cutoff,
+                  let recordID = latest.value(forKey: "recordID") as? String,
+                  let uuid = UUID(uuidString: recordID) else { return nil }
+            return (ProfileID(rawValue: uuid), deletedAt)
+        }
+        let stored = try decodeLatest(
+            ProfileDeletionCleanup.self,
+            kind: .profileDeletionCleanup,
+            entityName: Entity.local,
+            context: context
+        )
+        var byProfile = Dictionary(
+            uniqueKeysWithValues: stored
+                .filter { !$0.isComplete && !activeProfileIDs.contains($0.profileID) }
+                .map { ($0.profileID, $0) }
+        )
+        for (profileID, deletedAt) in tombstones where !activeProfileIDs.contains(profileID) {
+            if let existing = stored.first(where: { $0.profileID == profileID }) {
+                byProfile[profileID] = existing
+            } else {
+                byProfile[profileID] = ProfileDeletionCleanup(
+                    profileID: profileID,
+                    createdAt: deletedAt,
+                    modifiedAt: deletedAt
+                )
+            }
+        }
+        return byProfile.values.sorted { lhs, rhs in
+            if lhs.createdAt == rhs.createdAt {
+                return lhs.profileID.rawValue.uuidString < rhs.profileID.rawValue.uuidString
+            }
+            return lhs.createdAt < rhs.createdAt
+        }
     }
 
     private func replace<Value: Encodable>(

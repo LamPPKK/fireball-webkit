@@ -52,6 +52,156 @@ final class BrowserPersistenceTests: XCTestCase {
         XCTAssertFalse(restored.tabs.contains { $0.storageMode == .ephemeral })
     }
 
+    func testProfileTombstoneCreatesAndRetainsLocalCleanupLedger() async throws {
+        let repository = CoreDataBrowserRepository(inMemory: true, cloudKitEnabled: false)
+        var snapshot = try await repository.load()
+        let now = Date.now
+        let deletedProfile = BrowserProfile(
+            id: ProfileID(),
+            name: "Deleted",
+            colorHex: "F58547",
+            storageMode: .persistent,
+            searchProvider: .brave,
+            blockerEnabled: true,
+            modifiedAt: now
+        )
+        snapshot.profiles.append(deletedProfile)
+        try repository.save(snapshot)
+
+        snapshot.profiles.removeAll { $0.id == deletedProfile.id }
+        try repository.save(snapshot)
+
+        var restored = try await repository.load()
+        let pending = try XCTUnwrap(restored.profileDeletionCleanups.first {
+            $0.profileID == deletedProfile.id
+        })
+        XCTAssertFalse(pending.isComplete)
+
+        restored.profileDeletionCleanups = [
+            ProfileDeletionCleanup(
+                profileID: deletedProfile.id,
+                websiteDataRemoved: true,
+                keychainLockRemoved: true,
+                createdAt: pending.createdAt,
+                modifiedAt: .now
+            ),
+        ]
+        try repository.save(restored)
+
+        let reloaded = try await repository.load()
+        let completed = try XCTUnwrap(reloaded.profileDeletionCleanups.first {
+            $0.profileID == deletedProfile.id
+        })
+        XCTAssertTrue(completed.isComplete)
+    }
+
+    func testIncompleteCleanupLedgerOutlivesMissingTombstoneUntilCompletion() async throws {
+        let repository = CoreDataBrowserRepository(inMemory: true, cloudKitEnabled: false)
+        var snapshot = try await repository.load()
+        let deletedProfileID = ProfileID()
+        snapshot.profileDeletionCleanups = [
+            ProfileDeletionCleanup(profileID: deletedProfileID),
+        ]
+        try repository.save(snapshot)
+
+        var restored = try await repository.load()
+        let pending = try XCTUnwrap(restored.profileDeletionCleanups.first {
+            $0.profileID == deletedProfileID
+        })
+        XCTAssertFalse(pending.isComplete)
+
+        restored.profileDeletionCleanups = [
+            ProfileDeletionCleanup(
+                profileID: deletedProfileID,
+                websiteDataRemoved: true,
+                keychainLockRemoved: true,
+                createdAt: pending.createdAt,
+                modifiedAt: .now
+            ),
+        ]
+        try repository.save(restored)
+
+        let completed = try await repository.load()
+        XCTAssertFalse(completed.profileDeletionCleanups.contains {
+            $0.profileID == deletedProfileID
+        })
+    }
+
+    func testFailedRepositorySaveRollsBackStagedProfileDeletion() async throws {
+        var shouldFailSave = false
+        let repository = CoreDataBrowserRepository(
+            inMemory: true,
+            cloudKitEnabled: false,
+            beforeContextSave: {
+                if shouldFailSave {
+                    throw PersistenceFailure.expected
+                }
+            }
+        )
+        var snapshot = try await repository.load()
+        let retainedProfile = BrowserProfile(
+            id: ProfileID(),
+            name: "Retained",
+            colorHex: "F58547",
+            storageMode: .persistent,
+            searchProvider: .brave,
+            blockerEnabled: true,
+            modifiedAt: .now
+        )
+        snapshot.profiles.append(retainedProfile)
+        try repository.save(snapshot)
+
+        shouldFailSave = true
+        snapshot.profiles.removeAll { $0.id == retainedProfile.id }
+        XCTAssertThrowsError(try repository.save(snapshot))
+
+        shouldFailSave = false
+        let restored = try await repository.load()
+        XCTAssertTrue(restored.profiles.contains { $0.id == retainedProfile.id })
+        XCTAssertFalse(restored.profileDeletionCleanups.contains {
+            $0.profileID == retainedProfile.id
+        })
+    }
+
+    func testZeroProfileRecoveryPreservesCleanupForEveryDeletedStore() async throws {
+        let repository = CoreDataBrowserRepository(inMemory: true, cloudKitEnabled: false)
+        var snapshot = try await repository.load()
+        let originalProfileIDs = Set(snapshot.profiles.map(\.id))
+        let secondProfile = BrowserProfile(
+            id: ProfileID(),
+            name: "Second",
+            colorHex: "64D8FF",
+            storageMode: .persistent,
+            searchProvider: .brave,
+            blockerEnabled: true,
+            modifiedAt: .now
+        )
+        snapshot.profiles.append(secondProfile)
+        try repository.save(snapshot)
+
+        let deletedProfileIDs = originalProfileIDs.union([secondProfile.id])
+        snapshot.profiles = []
+        snapshot.spaces = []
+        snapshot.tabs = []
+        snapshot.profileDeletionCleanups = []
+        snapshot.settings.historySyncEnabled = true
+        snapshot.settings.automaticArchiveInterval = .thirtyDays
+        snapshot.settings.modifiedAt = .now
+        try repository.save(snapshot)
+
+        let recovered = try await repository.load()
+        let recoveredProfile = try XCTUnwrap(recovered.profiles.first)
+        XCTAssertEqual(recovered.profiles.count, 1)
+        XCTAssertFalse(deletedProfileIDs.contains(recoveredProfile.id))
+        XCTAssertEqual(
+            Set(recovered.profileDeletionCleanups.map(\.profileID)),
+            deletedProfileIDs
+        )
+        XCTAssertTrue(recovered.profileDeletionCleanups.allSatisfy { !$0.isComplete })
+        XCTAssertTrue(recovered.settings.historySyncEnabled)
+        XCTAssertEqual(recovered.settings.automaticArchiveInterval, .thirtyDays)
+    }
+
     func testHistoryMovesBetweenLocalAndSyncedStoresWithoutDataLoss() async throws {
         let repository = CoreDataBrowserRepository(inMemory: true, cloudKitEnabled: false)
         var snapshot = try await repository.load()
@@ -223,4 +373,8 @@ final class BrowserPersistenceTests: XCTestCase {
         let restored = try await repository.load()
         XCTAssertTrue(restored.bookmarks.isEmpty)
     }
+}
+
+private enum PersistenceFailure: Error {
+    case expected
 }

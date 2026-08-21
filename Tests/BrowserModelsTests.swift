@@ -102,12 +102,13 @@ final class BrowserModelsTests: XCTestCase {
         )
     }
 
-    func testLegacySnapshotDecodesWithoutBlockerSiteExceptions() throws {
+    func testLegacySnapshotDecodesWithoutNewLocalCollections() throws {
         let encoder = JSONEncoder()
         var object = try XCTUnwrap(
             JSONSerialization.jsonObject(with: encoder.encode(BrowserSnapshot.initial())) as? [String: Any]
         )
         object.removeValue(forKey: "blockerSiteExceptions")
+        object.removeValue(forKey: "profileDeletionCleanups")
 
         let decoded = try JSONDecoder().decode(
             BrowserSnapshot.self,
@@ -115,5 +116,6 @@ final class BrowserModelsTests: XCTestCase {
         )
 
         XCTAssertTrue(decoded.blockerSiteExceptions.isEmpty)
+        XCTAssertTrue(decoded.profileDeletionCleanups.isEmpty)
     }
 }

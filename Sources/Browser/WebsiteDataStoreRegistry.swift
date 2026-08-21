@@ -1,7 +1,14 @@
 import WebKit
 
 @MainActor
-final class WebsiteDataStoreRegistry {
+protocol WebsiteDataStoreManaging: AnyObject {
+    func store(for profile: BrowserProfile) -> WKWebsiteDataStore
+    func removeEphemeralStore(for profileID: ProfileID)
+    func removePersistentStore(for profileID: ProfileID) async throws
+}
+
+@MainActor
+final class WebsiteDataStoreRegistry: WebsiteDataStoreManaging {
     private var ephemeralStores: [ProfileID: WKWebsiteDataStore] = [:]
 
     func store(for profile: BrowserProfile) -> WKWebsiteDataStore {

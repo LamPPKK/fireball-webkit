@@ -71,6 +71,7 @@ not a substitute for physical-device or TestFlight acceptance.
 
 - Private CloudKit metadata sync through `NSPersistentCloudKitContainer` with a local replica, last-writer-wins UUID conflict handling, and 30-day tombstones.
 - Profiles, spaces, regular tabs, regular-tab Archive metadata, bookmarks, settings, and exact-host Shields exceptions may sync; cookies, cache, credentials, biometric state, snapshots, private tabs, and private-space exceptions never do.
+- Profile deletion commits its synced metadata tombstone before destructive work. Each device then uses a local-only retry ledger to remove that profile's `WKWebsiteDataStore` and Keychain lock on launch/foreground, including after an offline device later receives the tombstone; cleanup progress, cookies, cache, and lock material never enter CloudKit.
 - History sync is opt-in, disclosed before enabling, and limited to 90 days.
 - Per-profile signed content-blocker policy with last-known-good rollback and a Shields control in the omnibox. Site exceptions match only the exact hostname, remain isolated by profile, and apply on the next navigation or explicit reload so Fireball never destroys a form or media session without the user's action.
 - Optional profile lock through Keychain and LocalAuthentication, private-space foreground lock, and an app-switcher privacy cover.

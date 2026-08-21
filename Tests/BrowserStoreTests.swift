@@ -1,4 +1,5 @@
 import XCTest
+import WebKit
 @testable import FireballWebKit
 
 @MainActor
@@ -13,6 +14,210 @@ final class BrowserStoreTests: XCTestCase {
         XCTAssertEqual(store.tabs.count, 1)
         XCTAssertEqual(store.activeTab?.storageMode, .persistent)
         XCTAssertNil(store.activeTab?.url)
+    }
+
+    func testProfileDeletionCommitsMetadataBeforeLocalCleanupAndCompletesLedger() async throws {
+        let fixture = makeTwoProfileSnapshot()
+        let events = TestEventLog()
+        let repository = RecordingBrowserRepository(snapshot: fixture.snapshot, events: events)
+        let dataStores = FakeWebsiteDataStoreManager(events: events)
+        let locks = FakeProfileLockStore(events: events)
+        let store = makeStore(repository: repository, profileLocks: locks, dataStores: dataStores)
+        await store.bootstrap()
+        events.entries.removeAll()
+
+        await store.deleteProfile(fixture.deletedProfileID)
+
+        XCTAssertFalse(store.profiles.contains { $0.id == fixture.deletedProfileID })
+        let cleanup = try XCTUnwrap(store.profileDeletionCleanups.first {
+            $0.profileID == fixture.deletedProfileID
+        })
+        XCTAssertTrue(cleanup.isComplete)
+        XCTAssertEqual(dataStores.removedPersistentProfiles, [fixture.deletedProfileID])
+        XCTAssertEqual(locks.disabledProfiles, [fixture.deletedProfileID])
+        XCTAssertEqual(events.entries.first, "save")
+        XCTAssertLessThan(
+            try XCTUnwrap(events.entries.firstIndex(of: "save")),
+            try XCTUnwrap(events.entries.firstIndex(of: "website-data"))
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(events.entries.firstIndex(of: "website-data")),
+            try XCTUnwrap(events.entries.firstIndex(of: "keychain-lock"))
+        )
+        XCTAssertFalse(repository.snapshot.profiles.contains { $0.id == fixture.deletedProfileID })
+        XCTAssertTrue(repository.snapshot.profileDeletionCleanups.first {
+            $0.profileID == fixture.deletedProfileID
+        }?.isComplete == true)
+    }
+
+    func testProfileDeletionCleanupFailureRetainsDurableRetryAndKeepsLock() async throws {
+        let fixture = makeTwoProfileSnapshot()
+        let repository = RecordingBrowserRepository(snapshot: fixture.snapshot)
+        let dataStores = FakeWebsiteDataStoreManager(removalResult: .failure(TestFailure.expected))
+        let locks = FakeProfileLockStore()
+        let store = makeStore(repository: repository, profileLocks: locks, dataStores: dataStores)
+        await store.bootstrap()
+
+        await store.deleteProfile(fixture.deletedProfileID)
+
+        XCTAssertFalse(store.profiles.contains { $0.id == fixture.deletedProfileID })
+        let cleanup = try XCTUnwrap(repository.snapshot.profileDeletionCleanups.first {
+            $0.profileID == fixture.deletedProfileID
+        })
+        XCTAssertFalse(cleanup.websiteDataRemoved)
+        XCTAssertFalse(cleanup.keychainLockRemoved)
+        XCTAssertTrue(locks.disabledProfiles.isEmpty)
+        XCTAssertTrue(
+            store.errorMessage?.hasPrefix("Profile data cleanup is pending and will retry:") == true
+        )
+    }
+
+    func testProfileLockCleanupRetriesWithoutRepeatingWebsiteDataRemoval() async throws {
+        let fixture = makeTwoProfileSnapshot()
+        let repository = RecordingBrowserRepository(snapshot: fixture.snapshot)
+        let dataStores = FakeWebsiteDataStoreManager()
+        let failingLocks = FakeProfileLockStore(disableResult: .failure(TestFailure.expected))
+        let store = makeStore(
+            repository: repository,
+            profileLocks: failingLocks,
+            dataStores: dataStores
+        )
+        await store.bootstrap()
+
+        await store.deleteProfile(fixture.deletedProfileID)
+
+        let pending = try XCTUnwrap(repository.snapshot.profileDeletionCleanups.first {
+            $0.profileID == fixture.deletedProfileID
+        })
+        XCTAssertTrue(pending.websiteDataRemoved)
+        XCTAssertFalse(pending.keychainLockRemoved)
+        XCTAssertEqual(dataStores.removedPersistentProfiles, [fixture.deletedProfileID])
+
+        let retryDataStores = FakeWebsiteDataStoreManager()
+        let retryLocks = FakeProfileLockStore()
+        let relaunchedStore = makeStore(
+            repository: repository,
+            profileLocks: retryLocks,
+            dataStores: retryDataStores
+        )
+        await relaunchedStore.bootstrap()
+
+        XCTAssertTrue(retryDataStores.removedPersistentProfiles.isEmpty)
+        XCTAssertEqual(retryLocks.disabledProfiles, [fixture.deletedProfileID])
+        XCTAssertTrue(repository.snapshot.profileDeletionCleanups.first {
+            $0.profileID == fixture.deletedProfileID
+        }?.isComplete == true)
+    }
+
+    func testBootstrapRetriesDurableProfileDeletionCleanup() async throws {
+        let deletedProfileID = ProfileID()
+        var snapshot = BrowserSnapshot.initial()
+        snapshot.profileDeletionCleanups = [ProfileDeletionCleanup(profileID: deletedProfileID)]
+        let repository = RecordingBrowserRepository(snapshot: snapshot)
+        let dataStores = FakeWebsiteDataStoreManager()
+        let locks = FakeProfileLockStore()
+        let store = makeStore(repository: repository, profileLocks: locks, dataStores: dataStores)
+
+        await store.bootstrap()
+
+        XCTAssertEqual(dataStores.removedPersistentProfiles, [deletedProfileID])
+        XCTAssertEqual(locks.disabledProfiles, [deletedProfileID])
+        XCTAssertTrue(repository.snapshot.profileDeletionCleanups.first {
+            $0.profileID == deletedProfileID
+        }?.isComplete == true)
+    }
+
+    func testForegroundRetriesCleanupThatFailedDuringBootstrap() async throws {
+        let deletedProfileID = ProfileID()
+        var snapshot = BrowserSnapshot.initial()
+        snapshot.profileDeletionCleanups = [ProfileDeletionCleanup(profileID: deletedProfileID)]
+        let repository = RecordingBrowserRepository(snapshot: snapshot)
+        let dataStores = FakeWebsiteDataStoreManager(removalResult: .failure(TestFailure.expected))
+        let locks = FakeProfileLockStore()
+        let store = makeStore(repository: repository, profileLocks: locks, dataStores: dataStores)
+        await store.bootstrap()
+        XCTAssertFalse(repository.snapshot.profileDeletionCleanups.first {
+            $0.profileID == deletedProfileID
+        }?.isComplete == true)
+
+        dataStores.updateRemovalResult(.success(()))
+        await store.revealAfterForeground()
+
+        XCTAssertEqual(dataStores.removedPersistentProfiles, [deletedProfileID])
+        XCTAssertEqual(locks.disabledProfiles, [deletedProfileID])
+        XCTAssertTrue(repository.snapshot.profileDeletionCleanups.first {
+            $0.profileID == deletedProfileID
+        }?.isComplete == true)
+    }
+
+    func testProfileDeletionPersistenceFailureRollsBackAndSkipsDestructiveCleanup() async throws {
+        let fixture = makeTwoProfileSnapshot()
+        let repository = RecordingBrowserRepository(snapshot: fixture.snapshot)
+        let dataStores = FakeWebsiteDataStoreManager()
+        let locks = FakeProfileLockStore()
+        let store = makeStore(repository: repository, profileLocks: locks, dataStores: dataStores)
+        await store.bootstrap()
+        repository.saveResult = .failure(TestFailure.expected)
+
+        await store.deleteProfile(fixture.deletedProfileID)
+
+        XCTAssertTrue(store.profiles.contains { $0.id == fixture.deletedProfileID })
+        XCTAssertTrue(store.profileDeletionCleanups.isEmpty)
+        XCTAssertTrue(dataStores.removedPersistentProfiles.isEmpty)
+        XCTAssertTrue(locks.disabledProfiles.isEmpty)
+        XCTAssertNotNil(store.errorMessage)
+    }
+
+    func testDeletingSelectedProfileCreatesFallbackHomeBeforeCommit() async throws {
+        var fixture = makeTwoProfileSnapshot()
+        let deletedSpaceID = try XCTUnwrap(
+            fixture.snapshot.spaces.first { $0.profileID == fixture.deletedProfileID }?.id
+        )
+        fixture.snapshot.settings.lastSelectedSpaceID = deletedSpaceID
+        fixture.snapshot.tabs.removeAll {
+            $0.spaceID != deletedSpaceID
+        }
+        let repository = RecordingBrowserRepository(snapshot: fixture.snapshot)
+        let store = makeStore(repository: repository, dataStores: FakeWebsiteDataStoreManager())
+        await store.bootstrap()
+        XCTAssertEqual(store.selectedSpaceID, deletedSpaceID)
+
+        await store.deleteProfile(fixture.deletedProfileID)
+
+        XCTAssertNotEqual(store.selectedSpaceID, deletedSpaceID)
+        XCTAssertEqual(store.activeTab?.spaceID, store.selectedSpaceID)
+        XCTAssertNil(store.activeTab?.url)
+        XCTAssertEqual(repository.snapshot.tabs.count, 1)
+    }
+
+    func testRemoteProfileDeletionTriggersLocalCleanupWithoutSyncedProgress() async throws {
+        let fixture = makeTwoProfileSnapshot()
+        let repository = RecordingBrowserRepository(snapshot: fixture.snapshot)
+        let dataStores = FakeWebsiteDataStoreManager()
+        let locks = FakeProfileLockStore()
+        let store = makeStore(repository: repository, profileLocks: locks, dataStores: dataStores)
+        await store.bootstrap()
+
+        let removedSpaceIDs = Set(
+            repository.snapshot.spaces
+                .filter { $0.profileID == fixture.deletedProfileID }
+                .map(\.id)
+        )
+        repository.snapshot.profiles.removeAll { $0.id == fixture.deletedProfileID }
+        repository.snapshot.spaces.removeAll { $0.profileID == fixture.deletedProfileID }
+        repository.snapshot.tabs.removeAll { removedSpaceIDs.contains($0.spaceID) }
+        repository.snapshot.profileDeletionCleanups = []
+        repository.notifyExternalChange()
+        for _ in 0 ..< 20 where dataStores.removedPersistentProfiles.isEmpty {
+            await Task.yield()
+        }
+
+        XCTAssertFalse(store.profiles.contains { $0.id == fixture.deletedProfileID })
+        XCTAssertEqual(dataStores.removedPersistentProfiles, [fixture.deletedProfileID])
+        XCTAssertEqual(locks.disabledProfiles, [fixture.deletedProfileID])
+        XCTAssertTrue(repository.snapshot.profileDeletionCleanups.first {
+            $0.profileID == fixture.deletedProfileID
+        }?.isComplete == true)
     }
 
     func testPrivateSpaceIsMemoryOnly() async throws {
@@ -385,15 +590,56 @@ final class BrowserStoreTests: XCTestCase {
     }
 
     private func makeStore(
-        repository: InMemoryBrowserRepository,
-        profileLocks: FakeProfileLockStore = FakeProfileLockStore()
+        repository: any BrowserRepository,
+        profileLocks: FakeProfileLockStore = FakeProfileLockStore(),
+        dataStores: any WebsiteDataStoreManaging = WebsiteDataStoreRegistry()
     ) -> BrowserStore {
         BrowserStore(
             repository: repository,
+            dataStores: dataStores,
             profileLocks: profileLocks,
             ownerAuthenticator: FakeOwnerAuthenticator(result: .success(())),
             loadBundledRules: false
         )
+    }
+
+    private func makeTwoProfileSnapshot() -> (snapshot: BrowserSnapshot, deletedProfileID: ProfileID) {
+        var snapshot = BrowserSnapshot.initial()
+        let now = Date.now
+        let profile = BrowserProfile(
+            id: ProfileID(),
+            name: "Disposable",
+            colorHex: "F58547",
+            storageMode: .persistent,
+            searchProvider: .brave,
+            blockerEnabled: true,
+            modifiedAt: now
+        )
+        let tabID = TabID()
+        let space = BrowserSpace(
+            id: SpaceID(),
+            profileID: profile.id,
+            name: profile.name,
+            sortIndex: 1,
+            selectedTabID: tabID,
+            storageMode: .persistent,
+            modifiedAt: now
+        )
+        snapshot.profiles.append(profile)
+        snapshot.spaces.append(space)
+        snapshot.tabs.append(
+            BrowserTab(
+                id: tabID,
+                spaceID: space.id,
+                url: URL(string: "https://delete.example"),
+                title: "Delete",
+                sortIndex: 0,
+                lastActiveAt: now,
+                storageMode: .persistent,
+                modifiedAt: now
+            )
+        )
+        return (snapshot, profile.id)
     }
 }
 
@@ -401,17 +647,104 @@ final class BrowserStoreTests: XCTestCase {
 private final class FakeProfileLockStore: ProfileLocking {
     private var enabled: Set<ProfileID> = []
     private let unlockResult: Result<Void, any Error>
+    private let disableResult: Result<Void, any Error>
+    private let events: TestEventLog?
+    private(set) var disabledProfiles: [ProfileID] = []
 
-    init(unlockResult: Result<Void, any Error> = .success(())) {
+    init(
+        unlockResult: Result<Void, any Error> = .success(()),
+        disableResult: Result<Void, any Error> = .success(()),
+        events: TestEventLog? = nil
+    ) {
         self.unlockResult = unlockResult
+        self.disableResult = disableResult
+        self.events = events
     }
 
     func isEnabled(for profileID: ProfileID) -> Bool { enabled.contains(profileID) }
     func enable(for profileID: ProfileID) throws { enabled.insert(profileID) }
-    func disable(for profileID: ProfileID) throws { enabled.remove(profileID) }
+    func disable(for profileID: ProfileID) throws {
+        events?.entries.append("keychain-lock")
+        try disableResult.get()
+        enabled.remove(profileID)
+        disabledProfiles.append(profileID)
+    }
     func unlock(profileID: ProfileID, reason: String) async throws {
         _ = profileID
         _ = reason
         try unlockResult.get()
     }
+}
+
+@MainActor
+private final class FakeWebsiteDataStoreManager: WebsiteDataStoreManaging {
+    private let transientStore = WKWebsiteDataStore.nonPersistent()
+    private var removalResult: Result<Void, any Error>
+    private let events: TestEventLog?
+    private(set) var removedPersistentProfiles: [ProfileID] = []
+
+    init(
+        removalResult: Result<Void, any Error> = .success(()),
+        events: TestEventLog? = nil
+    ) {
+        self.removalResult = removalResult
+        self.events = events
+    }
+
+    func updateRemovalResult(_ result: Result<Void, any Error>) {
+        removalResult = result
+    }
+
+    func store(for profile: BrowserProfile) -> WKWebsiteDataStore {
+        _ = profile
+        return transientStore
+    }
+
+    func removeEphemeralStore(for profileID: ProfileID) {
+        _ = profileID
+    }
+
+    func removePersistentStore(for profileID: ProfileID) async throws {
+        events?.entries.append("website-data")
+        try removalResult.get()
+        removedPersistentProfiles.append(profileID)
+    }
+}
+
+@MainActor
+private final class RecordingBrowserRepository: BrowserRepository {
+    var snapshot: BrowserSnapshot
+    var saveResult: Result<Void, any Error> = .success(())
+    private(set) var syncStatus: BrowserSyncStatus = .localOnly
+    var onExternalChange: (@MainActor @Sendable () -> Void)?
+    var onSyncStatusChange: (@MainActor @Sendable (BrowserSyncStatus) -> Void)?
+    private let events: TestEventLog?
+
+    init(snapshot: BrowserSnapshot, events: TestEventLog? = nil) {
+        self.snapshot = snapshot
+        self.events = events
+    }
+
+    func load() async throws -> BrowserSnapshot {
+        snapshot
+    }
+
+    func save(_ snapshot: BrowserSnapshot) throws {
+        events?.entries.append("save")
+        try saveResult.get()
+        self.snapshot = snapshot
+    }
+
+    func notifyExternalChange() {
+        onExternalChange?()
+    }
+}
+
+@MainActor
+private final class TestEventLog {
+    var entries: [String] = []
+}
+
+private enum TestFailure: Error {
+    case expected
 }

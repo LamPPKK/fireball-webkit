@@ -10,6 +10,21 @@ final class BrowserStore {
     private static let maximumArchivedTabsPerProfile = 200
     private static let maximumBlockerSiteExceptionsPerProfile = 500
 
+    private struct ProfileDeletionStateSnapshot {
+        let profiles: [BrowserProfile]
+        let spaces: [BrowserSpace]
+        let tabs: [BrowserTab]
+        let archivedTabs: [ArchivedTab]
+        let blockerSiteExceptions: [BlockerSiteException]
+        let bookmarks: [Bookmark]
+        let history: [HistoryVisit]
+        let profileDeletionCleanups: [ProfileDeletionCleanup]
+        let settings: BrowserSettings
+        let selectedSpaceID: SpaceID?
+        let selectedTabID: TabID?
+        let unlockedProfiles: Set<ProfileID>
+    }
+
     var profiles: [BrowserProfile] = []
     var spaces: [BrowserSpace] = []
     var tabs: [BrowserTab] = []
@@ -17,6 +32,7 @@ final class BrowserStore {
     var blockerSiteExceptions: [BlockerSiteException] = []
     var bookmarks: [Bookmark] = []
     var history: [HistoryVisit] = []
+    var profileDeletionCleanups: [ProfileDeletionCleanup] = []
     var settings = BrowserSettings()
     var selectedSpaceID: SpaceID?
     var selectedTabID: TabID?
@@ -30,7 +46,7 @@ final class BrowserStore {
     let downloadCenter: BrowserDownloadCenter
 
     @ObservationIgnored private let repository: any BrowserRepository
-    @ObservationIgnored private let dataStores: WebsiteDataStoreRegistry
+    @ObservationIgnored private let dataStores: any WebsiteDataStoreManaging
     @ObservationIgnored private let ruleCompiler: any ContentRuleCompiling
     @ObservationIgnored private let profileLocks: any ProfileLocking
     @ObservationIgnored private let ownerAuthenticator: any OwnerAuthenticating
@@ -41,10 +57,11 @@ final class BrowserStore {
     @ObservationIgnored private var thumbnails: [TabID: UIImage] = [:]
     @ObservationIgnored private var contentRules: [WKContentRuleList] = []
     @ObservationIgnored private var unlockedProfiles: Set<ProfileID> = []
+    @ObservationIgnored private var isProcessingProfileDeletionCleanups = false
 
     init(
         repository: any BrowserRepository,
-        dataStores: WebsiteDataStoreRegistry = WebsiteDataStoreRegistry(),
+        dataStores: any WebsiteDataStoreManaging = WebsiteDataStoreRegistry(),
         ruleCompiler: any ContentRuleCompiling = ContentRuleService(),
         profileLocks: any ProfileLocking = KeychainProfileLockStore(service: "com.fireball.browser.profile-lock"),
         ownerAuthenticator: any OwnerAuthenticating = LocalOwnerAuthenticator(),
@@ -138,6 +155,7 @@ final class BrowserStore {
             blockerSiteExceptions = sanitizedBlockerSiteExceptions(snapshot.blockerSiteExceptions)
             bookmarks = snapshot.bookmarks.sorted { $0.createdAt > $1.createdAt }
             history = snapshot.history
+            profileDeletionCleanups = snapshot.profileDeletionCleanups
             settings = snapshot.settings
             purgeExpiredHistory(now: .now)
             purgeExpiredArchive(now: .now)
@@ -147,6 +165,7 @@ final class BrowserStore {
             ensureSelectionAndTab()
             _ = archiveStaleTabs(now: .now)
             try persist()
+            await retryProfileDeletionCleanups()
         } catch {
             let fallback = BrowserSnapshot.initial()
             apply(fallback)
@@ -322,15 +341,11 @@ final class BrowserStore {
             errorMessage = "Keep at least one regular profile."
             return
         }
+        let now = Date.now
         let removedSpaces = Set(spaces.filter { $0.profileID == profileID }.map(\.id))
         let removedTabs = tabs.filter { removedSpaces.contains($0.spaceID) }.map(\.id)
-        for tabID in removedTabs {
-            sessions.removeValue(forKey: tabID)?.webView.stopLoading()
-            thumbnails.removeValue(forKey: tabID)
-        }
+        let previousState = profileDeletionStateSnapshot()
         do {
-            try await dataStores.removePersistentStore(for: profileID)
-            try profileLocks.disable(for: profileID)
             profiles.removeAll { $0.id == profileID }
             spaces.removeAll { $0.profileID == profileID }
             tabs.removeAll { removedSpaces.contains($0.spaceID) }
@@ -338,10 +353,163 @@ final class BrowserStore {
             blockerSiteExceptions.removeAll { $0.profileID == profileID }
             bookmarks.removeAll { $0.profileID == profileID }
             history.removeAll { $0.profileID == profileID }
-            ensureSelectionAndTab()
+            unlockedProfiles.remove(profileID)
+            enqueueProfileDeletionCleanup(profileID, now: now)
+            repairSelectionAfterProfileDeletion(removedSpaces: removedSpaces, now: now)
             try persist()
         } catch {
+            restoreProfileDeletionState(previousState)
             errorMessage = "Profile deletion failed: \(error.localizedDescription)"
+            return
+        }
+        for tabID in removedTabs {
+            sessions.removeValue(forKey: tabID)?.webView.stopLoading()
+            thumbnails.removeValue(forKey: tabID)
+        }
+        await retryProfileDeletionCleanups()
+    }
+
+    private func enqueueProfileDeletionCleanup(_ profileID: ProfileID, now: Date) {
+        profileDeletionCleanups.removeAll { $0.profileID == profileID }
+        profileDeletionCleanups.append(
+            ProfileDeletionCleanup(profileID: profileID, createdAt: now, modifiedAt: now)
+        )
+    }
+
+    private func repairSelectionAfterProfileDeletion(removedSpaces: Set<SpaceID>, now: Date) {
+        let fallbackSpace = sorted(spaces.filter { $0.storageMode == .persistent }).first
+        if settings.lastSelectedSpaceID.map(removedSpaces.contains) ?? false {
+            settings.lastSelectedSpaceID = fallbackSpace?.id
+            settings.modifiedAt = now
+        }
+        guard selectedSpaceID == nil || selectedSpaceID.map(removedSpaces.contains) == true else { return }
+        selectedSpaceID = fallbackSpace?.id
+        selectedTabID = fallbackSpace.flatMap { space in
+            let candidates = sorted(tabs.filter { $0.spaceID == space.id })
+            if let selected = space.selectedTabID, candidates.contains(where: { $0.id == selected }) {
+                return selected
+            }
+            return candidates.last?.id
+        }
+        if let fallbackSpace {
+            if selectedTabID == nil {
+                let homeTab = BrowserTab(
+                    id: TabID(),
+                    spaceID: fallbackSpace.id,
+                    url: nil,
+                    title: "New Tab",
+                    sortIndex: 0,
+                    lastActiveAt: now,
+                    storageMode: .persistent,
+                    modifiedAt: now
+                )
+                tabs.append(homeTab)
+                selectedTabID = homeTab.id
+                setSelectedTab(homeTab.id, in: fallbackSpace.id)
+            }
+            settings.lastSelectedSpaceID = fallbackSpace.id
+            settings.modifiedAt = now
+        }
+    }
+
+    private func profileDeletionStateSnapshot() -> ProfileDeletionStateSnapshot {
+        ProfileDeletionStateSnapshot(
+            profiles: profiles,
+            spaces: spaces,
+            tabs: tabs,
+            archivedTabs: archivedTabs,
+            blockerSiteExceptions: blockerSiteExceptions,
+            bookmarks: bookmarks,
+            history: history,
+            profileDeletionCleanups: profileDeletionCleanups,
+            settings: settings,
+            selectedSpaceID: selectedSpaceID,
+            selectedTabID: selectedTabID,
+            unlockedProfiles: unlockedProfiles
+        )
+    }
+
+    private func restoreProfileDeletionState(_ state: ProfileDeletionStateSnapshot) {
+        profiles = state.profiles
+        spaces = state.spaces
+        tabs = state.tabs
+        archivedTabs = state.archivedTabs
+        blockerSiteExceptions = state.blockerSiteExceptions
+        bookmarks = state.bookmarks
+        history = state.history
+        profileDeletionCleanups = state.profileDeletionCleanups
+        settings = state.settings
+        selectedSpaceID = state.selectedSpaceID
+        selectedTabID = state.selectedTabID
+        unlockedProfiles = state.unlockedProfiles
+    }
+
+    private func retryProfileDeletionCleanups() async {
+        guard !isProcessingProfileDeletionCleanups else { return }
+        isProcessingProfileDeletionCleanups = true
+        defer { isProcessingProfileDeletionCleanups = false }
+
+        // Give SwiftUI a run-loop turn to release any active WKWebView before
+        // removing its persistent website data store, as required by WebKit.
+        await Task.yield()
+
+        var attemptedProfileIDs: Set<ProfileID> = []
+        while let profileID = (
+            profileDeletionCleanups
+                .filter { !$0.isComplete && !attemptedProfileIDs.contains($0.profileID) }
+                .map(\.profileID)
+                .min(by: { $0.rawValue.uuidString < $1.rawValue.uuidString })
+        ) {
+            attemptedProfileIDs.insert(profileID)
+            guard !profiles.contains(where: { $0.id == profileID }) else {
+                profileDeletionCleanups.removeAll { $0.profileID == profileID }
+                tryPersist()
+                continue
+            }
+            guard let initialIndex = profileDeletionCleanups.firstIndex(where: { $0.profileID == profileID }) else {
+                continue
+            }
+
+            if !profileDeletionCleanups[initialIndex].websiteDataRemoved {
+                do {
+                    try await dataStores.removePersistentStore(for: profileID)
+                    guard let index = profileDeletionCleanups.firstIndex(where: { $0.profileID == profileID }) else {
+                        continue
+                    }
+                    let previous = profileDeletionCleanups[index]
+                    profileDeletionCleanups[index].websiteDataRemoved = true
+                    profileDeletionCleanups[index].modifiedAt = .now
+                    do {
+                        try persist()
+                    } catch {
+                        profileDeletionCleanups[index] = previous
+                        throw error
+                    }
+                } catch {
+                    errorMessage = "Profile data cleanup is pending and will retry: \(error.localizedDescription)"
+                    continue
+                }
+            }
+
+            guard let lockIndex = profileDeletionCleanups.firstIndex(where: { $0.profileID == profileID }) else {
+                continue
+            }
+            if !profileDeletionCleanups[lockIndex].keychainLockRemoved {
+                do {
+                    try profileLocks.disable(for: profileID)
+                    let previous = profileDeletionCleanups[lockIndex]
+                    profileDeletionCleanups[lockIndex].keychainLockRemoved = true
+                    profileDeletionCleanups[lockIndex].modifiedAt = .now
+                    do {
+                        try persist()
+                    } catch {
+                        profileDeletionCleanups[lockIndex] = previous
+                        throw error
+                    }
+                } catch {
+                    errorMessage = "Profile lock cleanup is pending and will retry: \(error.localizedDescription)"
+                }
+            }
         }
     }
 
@@ -564,6 +732,7 @@ final class BrowserStore {
 
     func revealAfterForeground() async {
         privacyShieldVisible = false
+        await retryProfileDeletionCleanups()
         await unlockActiveProfileIfNeeded()
     }
 
@@ -652,6 +821,11 @@ final class BrowserStore {
     private func mergeExternalChanges() async {
         do {
             let snapshot = try await repository.load()
+            let previousPersistentProfileIDs = Set(
+                profiles.filter { $0.storageMode == .persistent }.map(\.id)
+            )
+            let incomingPersistentProfileIDs = Set(snapshot.profiles.map(\.id))
+            let remotelyDeletedProfileIDs = previousPersistentProfileIDs.subtracting(incomingPersistentProfileIDs)
             let privateProfiles = profiles.filter { $0.storageMode == .ephemeral }
             let privateSpaces = spaces.filter { $0.storageMode == .ephemeral }
             let privateTabs = tabs.filter { $0.storageMode == .ephemeral }
@@ -673,6 +847,13 @@ final class BrowserStore {
             )
             bookmarks = snapshot.bookmarks.sorted { $0.createdAt > $1.createdAt }
             history = snapshot.history
+            let mergedCleanups = mergedProfileDeletionCleanups(
+                snapshot.profileDeletionCleanups,
+                adding: remotelyDeletedProfileIDs,
+                excluding: incomingPersistentProfileIDs
+            )
+            let cleanupLedgerChanged = Set(mergedCleanups) != Set(snapshot.profileDeletionCleanups)
+            profileDeletionCleanups = mergedCleanups
             settings = snapshot.settings
             purgeExpiredArchive(now: .now)
             syncStatus = repository.syncStatus
@@ -680,12 +861,45 @@ final class BrowserStore {
             for profile in profiles {
                 stagePolicyChange(for: profile.id)
             }
-            if !archiveStaleTabs(now: .now).isEmpty {
+            if !archiveStaleTabs(now: .now).isEmpty || cleanupLedgerChanged {
                 tryPersist()
             }
+            await retryProfileDeletionCleanups()
         } catch {
             syncStatus = .degraded(error.localizedDescription)
         }
+    }
+
+    private func mergedProfileDeletionCleanups(
+        _ incoming: [ProfileDeletionCleanup],
+        adding profileIDs: Set<ProfileID>,
+        excluding activeProfileIDs: Set<ProfileID>
+    ) -> [ProfileDeletionCleanup] {
+        var byProfile: [ProfileID: ProfileDeletionCleanup] = [:]
+        for candidate in profileDeletionCleanups + incoming {
+            if let existing = byProfile[candidate.profileID] {
+                byProfile[candidate.profileID] = ProfileDeletionCleanup(
+                    profileID: candidate.profileID,
+                    websiteDataRemoved: existing.websiteDataRemoved || candidate.websiteDataRemoved,
+                    keychainLockRemoved: existing.keychainLockRemoved || candidate.keychainLockRemoved,
+                    createdAt: min(existing.createdAt, candidate.createdAt),
+                    modifiedAt: max(existing.modifiedAt, candidate.modifiedAt)
+                )
+            } else {
+                byProfile[candidate.profileID] = candidate
+            }
+        }
+        for profileID in profileIDs where byProfile[profileID] == nil {
+            byProfile[profileID] = ProfileDeletionCleanup(profileID: profileID)
+        }
+        return byProfile.values
+            .filter { !activeProfileIDs.contains($0.profileID) }
+            .sorted { lhs, rhs in
+                if lhs.createdAt == rhs.createdAt {
+                    return lhs.profileID.rawValue.uuidString < rhs.profileID.rawValue.uuidString
+                }
+                return lhs.createdAt < rhs.createdAt
+            }
     }
 
     private func blockerStatus(for result: BlockerUpdateResult) -> String {
@@ -1003,6 +1217,9 @@ final class BrowserStore {
             },
             bookmarks: bookmarks,
             history: history,
+            profileDeletionCleanups: profileDeletionCleanups.filter { cleanup in
+                !profiles.contains { $0.id == cleanup.profileID && $0.storageMode == .persistent }
+            },
             settings: settings
         )
     }
@@ -1015,6 +1232,7 @@ final class BrowserStore {
         blockerSiteExceptions = sanitizedBlockerSiteExceptions(snapshot.blockerSiteExceptions)
         bookmarks = snapshot.bookmarks
         history = snapshot.history
+        profileDeletionCleanups = snapshot.profileDeletionCleanups
         settings = snapshot.settings
     }
 

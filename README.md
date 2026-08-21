@@ -57,7 +57,7 @@ not a substitute for physical-device or TestFlight acceptance.
 - Bottom omnibox with Brave Search by default and DuckDuckGo, Google, or Bing per profile.
 - Back, Forward, Reload, Home, bookmarks managed from Library, native URL sharing, and focused-scene iPad keyboard commands.
 - URL policy admits HTTP and HTTPS while Apple Transport Security remains enforced. `mailto:` and `tel:` require confirmation; script, data, file, and custom schemes are blocked.
-- If WebKit terminates the active content process, Fireball retries once. A repeated failure stops the loop and tells the user to reload. A terminated background session is discarded and recreated only when needed.
+- If WebKit terminates the active content process, Fireball retries once. A repeated failure stops the loop and offers explicit Reload or Open Home recovery for that exact tab. A terminated background session is discarded and recreated only when needed.
 
 ### Downloads
 

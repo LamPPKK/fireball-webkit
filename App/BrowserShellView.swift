@@ -50,7 +50,11 @@ struct BrowserShellView: View {
             SettingsView(store: store)
         }
         .alert("Fireball", isPresented: errorBinding) {
-            Button("Dismiss", role: .cancel) { store.errorMessage = nil }
+            if store.canRecoverFailedPage {
+                Button("Reload") { store.retryFailedPage() }
+                Button("Open Home") { store.openHomeAfterWebContentFailure() }
+            }
+            Button("Dismiss", role: .cancel) { store.dismissError() }
         } message: {
             Text(store.errorMessage ?? "The operation could not be completed.")
         }
@@ -497,7 +501,7 @@ struct BrowserShellView: View {
     private var errorBinding: Binding<Bool> {
         Binding(
             get: { store.errorMessage != nil },
-            set: { if !$0 { store.errorMessage = nil } }
+            set: { if !$0 { store.dismissError() } }
         )
     }
 

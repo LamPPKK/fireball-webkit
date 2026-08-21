@@ -35,7 +35,9 @@ The public product boundary remains:
    - one automatic reload for the active tab when its HTTP(S) URL is restorable;
    - no automatic background reload; the background session is discarded and recreated on demand;
    - no reload loop; a second consecutive failure reports an error and waits for the user;
-   - a completed navigation or manual reload reopens the one-retry budget.
+   - a completed navigation or manual reload reopens the one-retry budget;
+   - a repeated active-tab failure offers explicit Reload and Open Home actions,
+     bound to that failed tab rather than a generic global recovery command.
 3. **Repeatable product media.** A dedicated opt-in UI test creates the documentation screenshots and drives the exact Simulator flow recorded in the demo, so both use the same app binary and stable accessibility identifiers as the test suite.
 
 ### Already stronger in Fireball
@@ -77,5 +79,4 @@ No Midori patch was copied automatically. Any future source reuse must record th
 
 - Should portable export contain only tabs, or also bookmarks and non-sensitive profile settings?
 - Is an app-owned backup format worth the long-term compatibility burden when CloudKit already covers Apple-device metadata sync?
-- Should repeated WebKit process termination offer an explicit “Open Home” action in addition to manual reload?
 - Which privacy-preserving crash evidence, if any, can be collected only after the user explicitly creates a redacted diagnostic bundle?

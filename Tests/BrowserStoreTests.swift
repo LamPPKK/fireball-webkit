@@ -548,6 +548,33 @@ final class BrowserStoreTests: XCTestCase {
 
         activeSession.webContentProcessDidTerminate()
         XCTAssertEqual(store.errorMessage, "The page stopped unexpectedly. Reload it when you are ready.")
+        XCTAssertTrue(store.canRecoverFailedPage)
+
+        store.openHomeAfterWebContentFailure()
+
+        XCTAssertNil(store.errorMessage)
+        XCTAssertFalse(store.canRecoverFailedPage)
+        XCTAssertNil(store.activeTab?.url)
+        XCTAssertFalse(store.isSessionLoaded(for: activeTab.id))
+    }
+
+    func testContentProcessFailureCanRetryTheExactActivePage() async throws {
+        let store = makeStore(repository: InMemoryBrowserRepository(snapshot: .initial()))
+        await store.bootstrap()
+        let tab = try XCTUnwrap(store.createTab(url: URL(string: "https://active.example/path")))
+        let session = try XCTUnwrap(store.activeSession)
+
+        session.webContentProcessDidTerminate()
+        session.webContentProcessDidTerminate()
+        XCTAssertTrue(store.canRecoverFailedPage)
+
+        store.retryFailedPage()
+
+        XCTAssertNil(store.errorMessage)
+        XCTAssertFalse(store.canRecoverFailedPage)
+        XCTAssertEqual(store.activeTab?.id, tab.id)
+        XCTAssertEqual(store.activeTab?.url?.absoluteString, "https://active.example/path")
+        XCTAssertTrue(store.isSessionLoaded(for: tab.id))
     }
 
     func testPrivateSpaceLocksAcrossBackgroundTransition() async {

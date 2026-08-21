@@ -5,6 +5,7 @@ import WebKit
 @MainActor
 @Observable
 final class BrowserStore {
+    private static let webContentFailureMessage = "The page stopped unexpectedly. Reload it when you are ready."
     private static let historyLifetime: TimeInterval = 90 * 24 * 60 * 60
     private static let archiveLifetime: TimeInterval = 30 * 24 * 60 * 60
     private static let maximumArchivedTabsPerProfile = 200
@@ -43,6 +44,7 @@ final class BrowserStore {
     var privateSpaceLocked = false
     var blockerStatus = "BUNDLED RULES"
     var pendingExternalURL: URL?
+    private(set) var webContentFailureTabID: TabID?
     let downloadCenter: BrowserDownloadCenter
 
     @ObservationIgnored private let repository: any BrowserRepository
@@ -119,6 +121,12 @@ final class BrowserStore {
         activeSession?.hasPendingPolicyChange ?? false
     }
 
+    var canRecoverFailedPage: Bool {
+        errorMessage == Self.webContentFailureMessage
+            && webContentFailureTabID == selectedTabID
+            && activeSession != nil
+    }
+
     var tabsInSelectedSpace: [BrowserTab] {
         guard let selectedSpaceID else { return [] }
         return sorted(tabs.filter { $0.spaceID == selectedSpaceID })
@@ -187,6 +195,24 @@ final class BrowserStore {
         guard let tabID = selectedTabID else { return }
         sessions.removeValue(forKey: tabID)?.webView.stopLoading()
         updateTab(tabID, url: nil, title: "New Tab")
+        clearWebContentFailure(for: tabID)
+    }
+
+    func retryFailedPage() {
+        guard canRecoverFailedPage else { return }
+        errorMessage = nil
+        webContentFailureTabID = nil
+        activeSession?.reload()
+    }
+
+    func openHomeAfterWebContentFailure() {
+        guard canRecoverFailedPage else { return }
+        openHome()
+    }
+
+    func dismissError() {
+        errorMessage = nil
+        webContentFailureTabID = nil
     }
 
     @discardableResult
@@ -239,6 +265,7 @@ final class BrowserStore {
     func closeTab(_ tabID: TabID) {
         guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
         archiveTabIfEligible(tab, now: .now)
+        clearWebContentFailure(for: tabID)
         sessions.removeValue(forKey: tabID)?.webView.stopLoading()
         thumbnails.removeValue(forKey: tabID)
         tabs.removeAll { $0.id == tabID }
@@ -964,7 +991,16 @@ final class BrowserStore {
         case .discard:
             sessions.removeValue(forKey: session.tabID)
         case .reportFailure:
-            errorMessage = "The page stopped unexpectedly. Reload it when you are ready."
+            webContentFailureTabID = session.tabID
+            errorMessage = Self.webContentFailureMessage
+        }
+    }
+
+    private func clearWebContentFailure(for tabID: TabID) {
+        guard webContentFailureTabID == tabID else { return }
+        webContentFailureTabID = nil
+        if errorMessage == Self.webContentFailureMessage {
+            errorMessage = nil
         }
     }
 
